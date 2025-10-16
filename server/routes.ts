@@ -231,14 +231,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Need at least 2 photos to analyze" });
       }
 
+      // Get face selections from request body (optional)
+      const faceSelections = req.body.faceSelections as Record<string, Record<number, boolean>> | undefined;
+
       // Update session status to analyzing
       await storage.updateSession(req.params.sessionId, {
         status: "analyzing",
       });
 
-      // Analyze all photos
+      // Analyze all photos with face selections
       const { analyses, bestPhotoId } = await photoAnalysisService.analyzeSession(
-        photos.map(p => ({ id: p.id, fileUrl: p.fileUrl }))
+        photos.map(p => ({ id: p.id, fileUrl: p.fileUrl })),
+        faceSelections
       );
 
       // Update photos with analysis results

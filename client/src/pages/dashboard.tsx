@@ -101,38 +101,11 @@ export default function Dashboard() {
     },
   });
 
-  // Analyze session mutation
-  const analyzeSessionMutation = useMutation({
-    mutationFn: async (sessionId: string) => {
-      return await apiRequest("POST", "/api/sessions/" + sessionId + "/analyze", {});
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/sessions", selectedSession, "photos"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/sessions"] });
-      toast({
-        title: "Analysis Complete",
-        description: "Photos have been analyzed successfully",
-      });
-    },
-    onError: (error: Error) => {
-      if (isUnauthorizedError(error)) {
-        toast({
-          title: "Unauthorized",
-          description: "You are logged out. Logging in again...",
-          variant: "destructive",
-        });
-        setTimeout(() => {
-          window.location.href = "/api/login";
-        }, 500);
-        return;
-      }
-      toast({
-        title: "Error",
-        description: "Failed to analyze photos",
-        variant: "destructive",
-      });
-    },
-  });
+  // Navigate to face preview page
+  const [, navigate] = useLocation();
+  const goToFacePreview = (sessionId: string) => {
+    navigate(`/session/${sessionId}/preview`);
+  };
 
   const handleGetUploadParameters = async (file: any) => {
     const res = await apiRequest("POST", "/api/objects/upload", {});
@@ -233,17 +206,12 @@ export default function Dashboard() {
           <div className="flex items-center gap-1 sm:gap-4">
             {selectedSession && canAnalyze && (
               <Button 
-                onClick={() => analyzeSessionMutation.mutate(selectedSession)}
-                disabled={analyzeSessionMutation.isPending}
+                onClick={() => goToFacePreview(selectedSession)}
                 data-testid="button-analyze-session-header"
                 className="hidden sm:flex min-h-[44px]"
               >
-                {analyzeSessionMutation.isPending ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <Sparkles className="mr-2 h-4 w-4" />
-                )}
-                Analyze Photos
+                <Sparkles className="mr-2 h-4 w-4" />
+                Select Faces & Analyze
               </Button>
             )}
             {user && user.profileImageUrl && (
@@ -361,7 +329,7 @@ export default function Dashboard() {
                 {currentSession?.status === 'completed' && photos && photos.length > 0 && (
                   <Button 
                     variant="outline"
-                    onClick={() => window.location.href = `/session/${selectedSession}/compare`}
+                    onClick={() => navigate(`/session/${selectedSession}/compare`)}
                     data-testid="button-view-comparison"
                     className="hidden sm:flex"
                   >
@@ -371,17 +339,13 @@ export default function Dashboard() {
                 )}
                 {/* Desktop Analyze Button */}
                 <Button 
-                  onClick={() => analyzeSessionMutation.mutate(selectedSession)}
-                  disabled={!canAnalyze || analyzeSessionMutation.isPending}
+                  onClick={() => goToFacePreview(selectedSession)}
+                  disabled={!canAnalyze}
                   data-testid="button-analyze-session"
                   className="hidden sm:flex"
                 >
-                  {analyzeSessionMutation.isPending ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <Sparkles className="mr-2 h-4 w-4" />
-                  )}
-                  Analyze Photos
+                  <Sparkles className="mr-2 h-4 w-4" />
+                  Select Faces & Analyze
                 </Button>
               </div>
             </div>
@@ -457,7 +421,7 @@ export default function Dashboard() {
           {currentSession?.status === 'completed' ? (
             <Button 
               variant="outline"
-              onClick={() => window.location.href = `/session/${selectedSession}/compare`}
+              onClick={() => navigate(`/session/${selectedSession}/compare`)}
               data-testid="button-view-comparison-mobile"
               className="w-full min-h-[52px] text-base"
             >
@@ -466,17 +430,13 @@ export default function Dashboard() {
             </Button>
           ) : (
             <Button 
-              onClick={() => analyzeSessionMutation.mutate(selectedSession)}
-              disabled={!canAnalyze || analyzeSessionMutation.isPending}
+              onClick={() => goToFacePreview(selectedSession)}
+              disabled={!canAnalyze}
               data-testid="button-analyze-session-mobile"
               className="w-full min-h-[52px] text-base"
             >
-              {analyzeSessionMutation.isPending ? (
-                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-              ) : (
-                <Sparkles className="mr-2 h-5 w-5" />
-              )}
-              Analyze Photos
+              <Sparkles className="mr-2 h-5 w-5" />
+              Select Faces & Analyze
             </Button>
           )}
         </div>

@@ -281,8 +281,12 @@ export class PhotoAnalysisService {
 
   /**
    * Analyze all photos in a session
+   * @param faceSelections - Optional face selections per photo: { photoId: { faceIdx: true/false } }
    */
-  async analyzeSession(photos: { id: string; fileUrl: string }[]): Promise<{
+  async analyzeSession(
+    photos: { id: string; fileUrl: string }[], 
+    faceSelections?: Record<string, Record<number, boolean>>
+  ): Promise<{
     analyses: PhotoAnalysisResult[];
     bestPhotoId: string | null;
   }> {
@@ -292,6 +296,59 @@ export class PhotoAnalysisService {
     for (const photo of photos) {
       try {
         const analysis = await this.analyzePhoto(photo.fileUrl, photo.id);
+        
+        // Apply face exclusions if provided
+        if (faceSelections && faceSelections[photo.id]) {
+          const photoSelections = faceSelections[photo.id];
+          
+          // Filter out excluded faces and recalculate quality score
+          const includedFaces = analysis.faces.filter((_, idx) => photoSelections[idx] !== false);
+          
+          if (includedFaces.length > 0) {
+            // Recalculate overall quality based on included faces only
+            const eyesOpenCount = includedFaces.filter(f => f.attributes.eyesOpen.detected).length;
+            const smilingCount = includedFaces.filter(f => f.attributes.smile.detected).length;
+            const avgFaceQuality = includedFaces.reduce((sum, f) => sum + f.qualityScore, 0) / includedFaces.length;
+            
+            const eyesOpenScore = (eyesOpenCount / includedFaces.length) * 40;
+            const smilingScore = (smilingCount / includedFaces.length) * 40;
+            const faceQualityScore = (avgFaceQuality / 100) * 20;
+            
+            const overallQualityScore = eyesOpenScore + smilingScore + faceQualityScore;
+            
+            const closedEyes = includedFaces.length - eyesOpenCount;
+            const poorExpressions = includedFaces.filter(f => 
+              f.attributes.expression === 'sad' || f.attributes.expression === 'angry'
+            ).length;
+
+            let recommendation: 'best' | 'good' | 'acceptable' | 'poor';
+            if (overallQualityScore >= 85) recommendation = 'best';
+            else if (overallQualityScore >= 70) recommendation = 'good';
+            else if (overallQualityScore >= 50) recommendation = 'acceptable';
+            else recommendation = 'poor';
+
+            // Update analysis with filtered results
+            analysis.faces = includedFaces;
+            analysis.overallQualityScore = overallQualityScore;
+            analysis.issues = {
+              closedEyes,
+              poorExpressions,
+              blurryFaces: 0,
+            };
+            analysis.recommendation = recommendation;
+          } else {
+            // All faces excluded - mark as poor quality with reset issues
+            analysis.faces = [];
+            analysis.overallQualityScore = 0;
+            analysis.issues = {
+              closedEyes: 0,
+              poorExpressions: 0,
+              blurryFaces: 0,
+            };
+            analysis.recommendation = 'poor';
+          }
+        }
+        
         analyses.push(analysis);
       } catch (error) {
         console.error(`Failed to analyze photo ${photo.id}:`, error);
