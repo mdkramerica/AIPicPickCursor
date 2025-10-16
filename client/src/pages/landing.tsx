@@ -5,32 +5,32 @@ import { Card } from "@/components/ui/card";
 export default function Landing() {
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      {/* Mobile-Optimized Header */}
+      <header className="border-b sticky top-0 bg-background z-50">
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 h-14 sm:h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Sparkles className="h-6 w-6 text-primary" />
-            <span className="text-xl font-semibold">AI Photo Selector</span>
+            <Sparkles className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />
+            <span className="text-base sm:text-xl font-semibold">AI Photo Selector</span>
           </div>
-          <Button asChild data-testid="button-login">
+          <Button asChild data-testid="button-login" className="min-h-[44px]">
             <a href="/api/login">Sign In</a>
           </Button>
         </div>
       </header>
 
-      {/* Hero Section */}
-      <section className="relative overflow-hidden py-20 sm:py-32">
+      {/* Mobile-Optimized Hero Section */}
+      <section className="relative overflow-hidden py-12 sm:py-20 lg:py-32">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center">
-            <h1 className="text-4xl sm:text-6xl font-bold tracking-tight mb-6">
+            <h1 className="text-3xl sm:text-4xl lg:text-6xl font-bold tracking-tight mb-4 sm:mb-6">
               Find Your Perfect
               <span className="block text-primary mt-2">Group Photo with AI</span>
             </h1>
-            <p className="text-xl text-muted-foreground max-w-3xl mx-auto mb-10">
+            <p className="text-base sm:text-xl text-muted-foreground max-w-3xl mx-auto mb-8 sm:mb-10 px-2">
               No more scrolling through dozens of shots. Our AI analyzes faces, detects open eyes and smiles, 
               then recommends the best photo from your group shots—instantly.
             </p>
-            <Button size="lg" asChild className="text-lg px-8 py-6" data-testid="button-get-started">
+            <Button size="lg" asChild className="text-base sm:text-lg px-6 sm:px-8 py-5 sm:py-6 min-h-[52px]" data-testid="button-get-started">
               <a href="/api/login">
                 <Sparkles className="mr-2 h-5 w-5" />
                 Get Started Free
@@ -40,11 +40,11 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* Features Section */}
-      <section className="py-20 bg-card/30">
+      {/* Mobile-Optimized Features Section */}
+      <section className="py-12 sm:py-20 bg-card/30">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <h2 className="text-3xl font-bold text-center mb-12">How It Works</h2>
-          <div className="grid md:grid-cols-3 gap-8">
+          <h2 className="text-2xl sm:text-3xl font-bold text-center mb-8 sm:mb-12">How It Works</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 sm:gap-8">
             <Card className="p-6">
               <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center mb-4">
                 <Eye className="h-6 w-6 text-primary" />
@@ -78,12 +78,12 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* Benefits Section */}
-      <section className="py-20">
+      {/* Mobile-Optimized Benefits Section */}
+      <section className="py-12 sm:py-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid md:grid-cols-2 gap-12 items-center">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 sm:gap-12 items-center">
             <div>
-              <h2 className="text-3xl font-bold mb-6">Why Choose AI Photo Selector?</h2>
+              <h2 className="text-2xl sm:text-3xl font-bold mb-4 sm:mb-6">Why Choose AI Photo Selector?</h2>
               <ul className="space-y-4">
                 <li className="flex items-start gap-3">
                   <CheckCircle className="h-6 w-6 text-chart-2 flex-shrink-0 mt-0.5" />
@@ -128,20 +128,20 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* CTA Section */}
-      <section className="py-20 bg-primary text-primary-foreground">
+      {/* Mobile-Optimized CTA Section */}
+      <section className="py-12 sm:py-20 bg-primary text-primary-foreground">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h2 className="text-3xl sm:text-4xl font-bold mb-4">
+          <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold mb-3 sm:mb-4">
             Ready to Find Your Best Photo?
           </h2>
-          <p className="text-lg mb-8 opacity-90">
+          <p className="text-base sm:text-lg mb-6 sm:mb-8 opacity-90">
             Join thousands who've discovered the perfect group photo using AI
           </p>
           <Button 
             size="lg" 
             variant="secondary" 
             asChild 
-            className="text-lg px-8 py-6"
+            className="text-base sm:text-lg px-6 sm:px-8 py-5 sm:py-6 min-h-[52px]"
             data-testid="button-cta-login"
           >
             <a href="/api/login">
@@ -152,8 +152,8 @@ export default function Landing() {
       </section>
 
       {/* Footer */}
-      <footer className="border-t py-8">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center text-muted-foreground">
+      <footer className="border-t py-6 sm:py-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center text-sm sm:text-base text-muted-foreground">
           <p>&copy; 2024 AI Photo Selector. Find your perfect group photo.</p>
         </div>
       </footer>

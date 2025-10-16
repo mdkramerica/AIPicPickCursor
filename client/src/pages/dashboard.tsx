@@ -169,48 +169,46 @@ export default function Dashboard() {
   const canAnalyze = currentSession && currentSession.status === "uploading" && (photos?.length || 0) >= 2;
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
+    <div className="min-h-screen bg-background pb-20 sm:pb-8">
+      {/* Mobile-Optimized Header */}
       <header className="border-b sticky top-0 bg-background z-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 h-14 sm:h-16 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            <Sparkles className="h-6 w-6 text-primary" />
-            <span className="text-xl font-semibold hidden sm:inline">AI Photo Selector</span>
+            <Sparkles className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />
+            <span className="text-base sm:text-xl font-semibold">AI Photo Selector</span>
           </div>
-          <div className="flex items-center gap-2 sm:gap-4">
-            {user && (
-              <div className="flex items-center gap-2">
-                {user.profileImageUrl && (
-                  <img 
-                    src={user.profileImageUrl} 
-                    alt={user.firstName || "User"} 
-                    className="h-8 w-8 rounded-full object-cover"
-                  />
-                )}
-                <span className="text-sm text-muted-foreground hidden sm:inline" data-testid="text-user-name">
-                  {user.firstName || user.email}
-                </span>
-              </div>
+          <div className="flex items-center gap-1 sm:gap-4">
+            {user && user.profileImageUrl && (
+              <img 
+                src={user.profileImageUrl} 
+                alt={user.firstName || "User"} 
+                className="h-8 w-8 rounded-full object-cover"
+              />
             )}
-            <Button variant="ghost" size="sm" asChild data-testid="button-logout">
+            <Button variant="ghost" size="sm" asChild data-testid="button-logout" className="min-h-[44px]">
               <a href="/api/logout">
-                <LogOut className="h-4 w-4 mr-2" />
-                <span className="hidden sm:inline">Sign Out</span>
+                <LogOut className="h-4 w-4" />
+                <span className="hidden sm:inline ml-2">Sign Out</span>
               </a>
             </Button>
           </div>
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Action Bar */}
-        <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center mb-8">
-          <div>
-            <h1 className="text-3xl font-bold mb-1">Your Photo Sessions</h1>
-            <p className="text-muted-foreground">Upload group photos and let AI find the best one</p>
+      <main className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8">
+        {/* Mobile-Optimized Action Bar */}
+        <div className="mb-6 sm:mb-8">
+          <div className="mb-4">
+            <h1 className="text-2xl sm:text-3xl font-bold mb-1">Your Photo Sessions</h1>
+            <p className="text-sm sm:text-base text-muted-foreground">Upload group photos and let AI find the best one</p>
           </div>
-          <div className="flex gap-2 flex-wrap">
-            <Button onClick={handleNewSession} disabled={createSessionMutation.isPending} data-testid="button-new-session">
+          <div className="flex flex-col sm:flex-row gap-2 sm:gap-2">
+            <Button 
+              onClick={handleNewSession} 
+              disabled={createSessionMutation.isPending} 
+              data-testid="button-new-session"
+              className="w-full sm:w-auto min-h-[48px] sm:min-h-[40px]"
+            >
               {createSessionMutation.isPending ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : (
@@ -224,7 +222,7 @@ export default function Dashboard() {
                 maxFileSize={10485760}
                 onGetUploadParameters={handleGetUploadParameters}
                 onComplete={handleUploadComplete}
-                buttonClassName="gap-2"
+                buttonClassName="w-full sm:w-auto gap-2 min-h-[48px] sm:min-h-[40px]"
               >
                 <Upload className="h-4 w-4" />
                 Upload Photos
@@ -235,7 +233,7 @@ export default function Dashboard() {
 
         {/* Sessions List */}
         {sessionsLoading ? (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
             {[...Array(3)].map((_, i) => (
               <Card key={i} className="p-6">
                 <Skeleton className="h-32 w-full mb-4" />
@@ -245,29 +243,29 @@ export default function Dashboard() {
             ))}
           </div>
         ) : sessions && sessions.length > 0 ? (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 mb-8">
+          <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 mb-6 sm:mb-8">
             {sessions.map((session) => (
               <Card 
                 key={session.id} 
-                className={`cursor-pointer transition-all hover-elevate ${selectedSession === session.id ? 'ring-2 ring-primary' : ''}`}
+                className={`cursor-pointer transition-all hover-elevate min-h-[88px] ${selectedSession === session.id ? 'ring-2 ring-primary' : ''}`}
                 onClick={() => setSelectedSession(session.id)}
                 data-testid={`card-session-${session.id}`}
               >
-                <CardHeader className="pb-3">
+                <CardHeader className="pb-2 sm:pb-3">
                   <div className="flex items-center justify-between gap-2">
-                    <h3 className="font-semibold truncate">{session.name}</h3>
-                    <Badge variant={session.status === "completed" ? "default" : "secondary"}>
+                    <h3 className="font-semibold truncate text-base sm:text-lg">{session.name}</h3>
+                    <Badge variant={session.status === "completed" ? "default" : "secondary"} className="shrink-0">
                       {session.status}
                     </Badge>
                   </div>
                 </CardHeader>
-                <CardContent className="pb-3">
-                  <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                <CardContent className="pb-3 sm:pb-3">
+                  <div className="flex items-center gap-3 sm:gap-4 text-sm text-muted-foreground">
                     <span className="flex items-center gap-1">
                       <ImageIcon className="h-4 w-4" />
                       {session.photoCount} photos
                     </span>
-                    <span>{new Date(session.createdAt).toLocaleDateString()}</span>
+                    <span className="text-xs sm:text-sm">{new Date(session.createdAt).toLocaleDateString()}</span>
                   </div>
                 </CardContent>
               </Card>
@@ -287,13 +285,15 @@ export default function Dashboard() {
 
         {/* Selected Session Photos */}
         {selectedSession && (
-          <div className="mt-8">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-2xl font-bold">Session Photos</h2>
+          <div className="mt-6 sm:mt-8">
+            <div className="flex items-center justify-between mb-4 sm:mb-6">
+              <h2 className="text-xl sm:text-2xl font-bold">Session Photos</h2>
+              {/* Desktop Analyze Button */}
               <Button 
                 onClick={() => analyzeSessionMutation.mutate(selectedSession)}
                 disabled={!canAnalyze || analyzeSessionMutation.isPending}
                 data-testid="button-analyze-session"
+                className="hidden sm:flex"
               >
                 {analyzeSessionMutation.isPending ? (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -305,19 +305,19 @@ export default function Dashboard() {
             </div>
             
             {!canAnalyze && photos && photos.length > 0 && photos.length < 2 && (
-              <div className="mb-4 p-4 bg-muted rounded-lg text-sm text-muted-foreground text-center">
+              <div className="mb-4 p-3 sm:p-4 bg-muted rounded-lg text-sm text-muted-foreground text-center">
                 Upload at least 2 photos to start analysis
               </div>
             )}
 
             {photosLoading ? (
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="grid gap-3 sm:gap-4 grid-cols-2 sm:grid-cols-2 lg:grid-cols-3">
                 {[...Array(3)].map((_, i) => (
                   <Skeleton key={i} className="aspect-square w-full rounded-xl" />
                 ))}
               </div>
             ) : photos && photos.length > 0 ? (
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="grid gap-3 sm:gap-4 grid-cols-2 sm:grid-cols-2 lg:grid-cols-3">
                 {photos.map((photo) => (
                   <Card key={photo.id} className="overflow-hidden" data-testid={`card-photo-${photo.id}`}>
                     <div className="aspect-square relative bg-muted">
@@ -342,13 +342,13 @@ export default function Dashboard() {
                         </div>
                       )}
                     </div>
-                    <CardFooter className="p-4">
+                    <CardFooter className="p-3 sm:p-4">
                       <div className="flex items-center justify-between w-full gap-2">
-                        <span className="text-sm text-muted-foreground truncate">
+                        <span className="text-xs sm:text-sm text-muted-foreground truncate">
                           {photo.originalFilename}
                         </span>
                         {photo.qualityScore && Number(photo.qualityScore) > 0 && (
-                          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                          <div className="flex items-center gap-1 text-xs text-muted-foreground shrink-0">
                             <Eye className="h-3 w-3" />
                             <Smile className="h-3 w-3" />
                           </div>
@@ -359,15 +359,34 @@ export default function Dashboard() {
                 ))}
               </div>
             ) : (
-              <Card className="p-12 text-center">
-                <Upload className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                <h3 className="text-xl font-semibold mb-2">No Photos Yet</h3>
-                <p className="text-muted-foreground">Use the "Upload Photos" button above to add at least 2 photos for analysis</p>
+              <Card className="p-8 sm:p-12 text-center">
+                <Upload className="h-10 w-10 sm:h-12 sm:w-12 text-muted-foreground mx-auto mb-3 sm:mb-4" />
+                <h3 className="text-lg sm:text-xl font-semibold mb-2">No Photos Yet</h3>
+                <p className="text-sm sm:text-base text-muted-foreground">Use the "Upload Photos" button above to add at least 2 photos for analysis</p>
               </Card>
             )}
           </div>
         )}
       </main>
+
+      {/* Mobile Sticky Analyze Button */}
+      {selectedSession && photos && photos.length > 0 && (
+        <div className="fixed bottom-0 left-0 right-0 p-3 bg-background border-t sm:hidden z-40">
+          <Button 
+            onClick={() => analyzeSessionMutation.mutate(selectedSession)}
+            disabled={!canAnalyze || analyzeSessionMutation.isPending}
+            data-testid="button-analyze-session-mobile"
+            className="w-full min-h-[52px] text-base"
+          >
+            {analyzeSessionMutation.isPending ? (
+              <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+            ) : (
+              <Sparkles className="mr-2 h-5 w-5" />
+            )}
+            Analyze Photos
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
