@@ -3,6 +3,7 @@ import * as tf from '@tensorflow/tfjs-node';
 import * as faceapi from '@vladmandic/face-api';
 import type { FaceAnalysis, PhotoAnalysisResult } from "@shared/schema";
 import { loadImageFromUrl } from './imageLoader.js';
+import { createCanvas } from 'canvas';
 import path from 'path';
 
 export class PhotoAnalysisService {
@@ -40,16 +41,21 @@ export class PhotoAnalysisService {
       const image = await loadImageFromUrl(photoUrl);
       
       // Convert Image to Canvas for face-api compatibility
-      const { createCanvas } = await import('canvas');
       const canvas = createCanvas(image.width, image.height);
       const ctx = canvas.getContext('2d');
       ctx.drawImage(image, 0, 0);
       
+      // Convert canvas to TensorFlow tensor for face-api in Node.js
+      const tensor = tf.node.decodeImage(canvas.toBuffer('image/png'), 3);
+      
       // Detect all faces with landmarks and expressions
       const detections = await faceapi
-        .detectAllFaces(canvas as any, new faceapi.TinyFaceDetectorOptions())
+        .detectAllFaces(tensor as any, new faceapi.TinyFaceDetectorOptions())
         .withFaceLandmarks()
         .withFaceExpressions();
+      
+      // Clean up tensor
+      tensor.dispose();
 
       if (detections.length === 0) {
         // No faces detected - return low quality
@@ -98,8 +104,8 @@ export class PhotoAnalysisService {
         const qualityScore = Math.min(100, eyeScore + smileScore + expressionScore + detectionScore);
         
         // Normalize bounding box to 0-1 range
-        const imgWidth = (image as any).width;
-        const imgHeight = (image as any).height;
+        const imgWidth = canvas.width;
+        const imgHeight = canvas.height;
         
         return {
           faceId: `face-${photoId}-${index}`,
