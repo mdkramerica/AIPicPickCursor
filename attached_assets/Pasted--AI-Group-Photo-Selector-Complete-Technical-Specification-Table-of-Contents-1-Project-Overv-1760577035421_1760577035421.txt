@@ -1,0 +1,2346 @@
+# AI Group Photo Selector – Complete Technical Specification
+
+## Table of Contents
+1. [Project Overview](#project-overview)
+2. [Technical Architecture](#technical-architecture)
+3. [Tech Stack Recommendations](#tech-stack-recommendations)
+4. [Data Models](#data-models)
+5. [Core Features & Implementation](#core-features--implementation)
+6. [API Specifications](#api-specifications)
+7. [User Interface Components](#user-interface-components)
+8. [AI/ML Pipeline](#aiml-pipeline)
+9. [Security & Privacy](#security--privacy)
+10. [Testing Requirements](#testing-requirements)
+11. [Deployment & DevOps](#deployment--devops)
+12. [Project Milestones](#project-milestones)
+
+---
+
+## Project Overview
+
+### Vision Statement
+An intelligent group photo app using AI to automatically analyze, suggest, and synthesize the "best" photo from a series—minimizing closed eyes, maximizing smiles, and preserving natural realism.
+
+### Target Users
+- **Primary**: Casual users taking group photos (families, friends, events)
+- **Secondary**: Professional photographers and event managers
+- **Enterprise**: Photo platforms, social media apps, camera manufacturers
+
+### Success Metrics
+- Photo analysis accuracy: >95% face detection, >90% eye/smile classification
+- Processing time: <10 seconds for batch of 5 photos (up to 10 people)
+- User satisfaction: >80% of users prefer AI-selected photo over manual choice
+- Composite quality: >85% users cannot distinguish composite from real photo
+
+---
+
+## Technical Architecture
+
+### System Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                         Frontend Layer                       │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐     │
+│  │   Web App    │  │   iOS App    │  │ Android App  │     │
+│  │  (React/Next)│  │(React Native)│  │(React Native)│     │
+│  └──────────────┘  └──────────────┘  └──────────────┘     │
+└─────────────────────────────────────────────────────────────┘
+                            │
+                    ┌───────▼────────┐
+                    │   API Gateway  │
+                    │   (Express.js) │
+                    └───────┬────────┘
+                            │
+        ┌───────────────────┼───────────────────┐
+        │                   │                   │
+┌───────▼────────┐ ┌────────▼────────┐ ┌───────▼──────┐
+│ Image Processing│ │  AI/ML Service  │ │   Database   │
+│   Service       │ │   - Face Det    │ │  (PostgreSQL)│
+│   - Upload      │ │   - Eye Det     │ │  + S3/Cloud  │
+│   - Resize      │ │   - Expression  │ │   Storage    │
+│   - Composite   │ │   - Blending    │ └──────────────┘
+└─────────────────┘ └─────────────────┘
+```
+
+### Architecture Patterns
+- **Backend**: RESTful API + WebSocket for real-time processing updates
+- **Frontend**: Component-based SPA with state management (Redux/Zustand)
+- **Processing**: Async job queue (Bull/Redis) for heavy AI operations
+- **Storage**: Hybrid (cloud for long-term, local cache for processing)
+
+---
+
+## Tech Stack Recommendations
+
+### Frontend
+```yaml
+Web App:
+  - Framework: Next.js 14+ (React)
+  - UI Library: Tailwind CSS + shadcn/ui or MUI
+  - State Management: Zustand or Redux Toolkit
+  - Image Handling: react-image-crop, fabric.js (for compositing UI)
+  - File Upload: react-dropzone
+  - WebSocket: socket.io-client
+
+Mobile App:
+  - Framework: React Native + Expo
+  - UI: React Native Paper or NativeBase
+  - Image Handling: react-native-image-picker, react-native-vision-camera
+```
+
+### Backend
+```yaml
+API Server:
+  - Runtime: Node.js (Express) or Python (FastAPI)
+  - Queue: Bull + Redis for async job processing
+  - WebSocket: socket.io (for progress updates)
+  - Authentication: JWT + Passport.js or NextAuth
+  
+Database:
+  - Primary: PostgreSQL (metadata, users, sessions)
+  - Cache: Redis
+  - File Storage: AWS S3 / Google Cloud Storage / Cloudflare R2
+```
+
+### AI/ML Services
+```yaml
+Computer Vision:
+  - Face Detection: MediaPipe Face Detection or AWS Rekognition
+  - Face Landmarks: dlib or MediaPipe Face Mesh
+  - Eye Detection: OpenCV + custom model or Azure Face API
+  - Expression Analysis: DeepFace or Azure Emotion API
+  
+Image Processing:
+  - Core: OpenCV (Python) or Sharp (Node.js)
+  - Face Swapping: InsightFace or custom PyTorch model
+  - Image Blending: Poisson blending (OpenCV seamlessClone)
+  - Super Resolution (optional): Real-ESRGAN
+  
+Models:
+  - Pre-trained: Use existing models for MVP
+  - Custom Training: Fine-tune on group photo dataset for production
+```
+
+### DevOps
+```yaml
+Hosting:
+  - Frontend: Vercel or Netlify
+  - Backend: Replit (for development), Railway/Render/DigitalOcean (production)
+  - AI Processing: Dedicated GPU instance (RunPod, Modal Labs, or AWS EC2 G-series)
+  
+CI/CD:
+  - GitHub Actions or GitLab CI
+  - Automated testing before deployment
+  
+Monitoring:
+  - Sentry (error tracking)
+  - LogRocket or PostHog (user analytics)
+  - CloudWatch or Datadog (infrastructure)
+```
+
+---
+
+## Data Models
+
+### Database Schema
+
+```sql
+-- Users Table
+CREATE TABLE users (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  email VARCHAR(255) UNIQUE NOT NULL,
+  password_hash VARCHAR(255),
+  name VARCHAR(255),
+  subscription_tier VARCHAR(50) DEFAULT 'free', -- free, pro, enterprise
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Photo Sessions Table
+CREATE TABLE photo_sessions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  name VARCHAR(255),
+  status VARCHAR(50) DEFAULT 'processing', -- uploading, processing, completed, failed
+  photo_count INTEGER DEFAULT 0,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Photos Table
+CREATE TABLE photos (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  session_id UUID REFERENCES photo_sessions(id) ON DELETE CASCADE,
+  file_url VARCHAR(500) NOT NULL,
+  thumbnail_url VARCHAR(500),
+  original_filename VARCHAR(255),
+  file_size INTEGER,
+  width INTEGER,
+  height INTEGER,
+  upload_order INTEGER,
+  is_selected_best BOOLEAN DEFAULT FALSE,
+  quality_score DECIMAL(5,2), -- 0-100 score from AI
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Faces Table (detected faces in each photo)
+CREATE TABLE faces (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  photo_id UUID REFERENCES photos(id) ON DELETE CASCADE,
+  person_index INTEGER, -- 0, 1, 2... for grouping same person across photos
+  bounding_box JSONB, -- {x, y, width, height}
+  landmarks JSONB, -- facial landmarks coordinates
+  eyes_open BOOLEAN,
+  eyes_confidence DECIMAL(5,2),
+  smile_detected BOOLEAN,
+  smile_confidence DECIMAL(5,2),
+  expression VARCHAR(50), -- happy, neutral, sad, surprised
+  head_angle JSONB, -- {pitch, yaw, roll}
+  quality_score DECIMAL(5,2),
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Composite Photos Table
+CREATE TABLE composite_photos (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  session_id UUID REFERENCES photo_sessions(id) ON DELETE CASCADE,
+  base_photo_id UUID REFERENCES photos(id),
+  composite_url VARCHAR(500) NOT NULL,
+  face_sources JSONB, -- [{person_index: 0, source_photo_id: uuid}, ...]
+  processing_time_ms INTEGER,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Processing Jobs Table
+CREATE TABLE processing_jobs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  session_id UUID REFERENCES photo_sessions(id) ON DELETE CASCADE,
+  job_type VARCHAR(50), -- analyze, composite, eye_fix, expression_adjust
+  status VARCHAR(50) DEFAULT 'queued', -- queued, processing, completed, failed
+  progress INTEGER DEFAULT 0, -- 0-100
+  error_message TEXT,
+  started_at TIMESTAMP,
+  completed_at TIMESTAMP,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+```
+
+### JSON Data Structures
+
+```typescript
+// Face Detection Response
+interface FaceAnalysis {
+  faceId: string;
+  personIndex: number;
+  boundingBox: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
+  landmarks: {
+    leftEye: { x: number; y: number };
+    rightEye: { x: number; y: number };
+    nose: { x: number; y: number };
+    mouthLeft: { x: number; y: number };
+    mouthRight: { x: number; y: number };
+  };
+  attributes: {
+    eyesOpen: {
+      detected: boolean;
+      confidence: number; // 0-1
+    };
+    smile: {
+      detected: boolean;
+      confidence: number; // 0-1
+      intensity: number; // 0-1
+    };
+    expression: 'happy' | 'neutral' | 'sad' | 'surprised' | 'angry';
+    headPose: {
+      pitch: number; // -90 to 90
+      yaw: number; // -90 to 90
+      roll: number; // -180 to 180
+    };
+  };
+  qualityScore: number; // 0-100
+}
+
+// Photo Analysis Result
+interface PhotoAnalysisResult {
+  photoId: string;
+  faces: FaceAnalysis[];
+  overallQualityScore: number;
+  issues: {
+    closedEyes: number; // count
+    poorExpressions: number; // count
+    blurryFaces: number; // count
+  };
+  recommendation: 'best' | 'good' | 'acceptable' | 'poor';
+}
+
+// Session Analysis Result
+interface SessionAnalysisResult {
+  sessionId: string;
+  photos: PhotoAnalysisResult[];
+  bestPhotoId: string | null;
+  requiresComposite: boolean;
+  compositeRecommendation?: {
+    basePhotoId: string;
+    faceSwaps: Array<{
+      personIndex: number;
+      sourcePhotoId: string;
+      reason: string;
+    }>;
+  };
+}
+```
+
+---
+
+## Core Features & Implementation
+
+### Feature 1: Automatic Best Photo Selection
+
+#### Algorithm Flow
+```
+1. Upload & Preprocessing
+   ├─ Validate image formats (JPEG, PNG, HEIC)
+   ├─ Generate thumbnails
+   ├─ Extract EXIF data (timestamp for grouping)
+   └─ Store in cloud storage
+
+2. Face Detection
+   ├─ Run face detection on each photo
+   ├─ Extract bounding boxes and landmarks
+   └─ Group faces across photos (same person detection)
+
+3. Quality Analysis (per face)
+   ├─ Eyes open detection (both eyes)
+   ├─ Smile detection and intensity
+   ├─ Expression classification
+   ├─ Head angle analysis (frontal vs profile)
+   ├─ Blur detection
+   └─ Overall face quality score
+
+4. Photo Scoring
+   ├─ Aggregate face scores per photo
+   ├─ Penalty for ANY closed eyes
+   ├─ Bonus for all smiling
+   ├─ Bonus for frontal poses
+   └─ Calculate overall photo score
+
+5. Best Photo Selection
+   ├─ Rank photos by score
+   ├─ Select top photo as "Best"
+   ├─ Determine if composite needed
+   └─ Return recommendations to user
+```
+
+#### Implementation Code Structure
+
+```python
+# backend/services/photo_analyzer.py
+
+class PhotoAnalyzer:
+    def __init__(self, face_detector, expression_classifier):
+        self.face_detector = face_detector
+        self.expression_classifier = expression_classifier
+    
+    async def analyze_session(self, session_id: str, photo_urls: List[str]):
+        """Main entry point for analyzing a photo session"""
+        results = []
+        
+        for url in photo_urls:
+            photo_result = await self.analyze_photo(url)
+            results.append(photo_result)
+        
+        best_photo = self.select_best_photo(results)
+        composite_needed = self.check_composite_needed(results)
+        
+        return SessionAnalysisResult(
+            session_id=session_id,
+            photos=results,
+            best_photo_id=best_photo.photo_id,
+            requires_composite=composite_needed,
+            composite_recommendation=self.generate_composite_plan(results) if composite_needed else None
+        )
+    
+    async def analyze_photo(self, photo_url: str) -> PhotoAnalysisResult:
+        """Analyze a single photo"""
+        image = await self.load_image(photo_url)
+        
+        # Detect faces
+        faces = await self.face_detector.detect(image)
+        
+        # Analyze each face
+        face_analyses = []
+        for face in faces:
+            analysis = await self.analyze_face(image, face)
+            face_analyses.append(analysis)
+        
+        # Calculate overall score
+        quality_score = self.calculate_photo_score(face_analyses)
+        
+        return PhotoAnalysisResult(
+            photo_id=photo_url,
+            faces=face_analyses,
+            overall_quality_score=quality_score,
+            issues=self.count_issues(face_analyses),
+            recommendation=self.classify_photo_quality(quality_score)
+        )
+    
+    async def analyze_face(self, image, face_bbox) -> FaceAnalysis:
+        """Analyze individual face attributes"""
+        face_crop = self.crop_face(image, face_bbox)
+        
+        # Detect landmarks
+        landmarks = await self.face_detector.get_landmarks(face_crop)
+        
+        # Check eyes
+        eyes_open = self.check_eyes_open(face_crop, landmarks)
+        
+        # Detect smile
+        smile_data = await self.expression_classifier.detect_smile(face_crop)
+        
+        # Get expression
+        expression = await self.expression_classifier.classify(face_crop)
+        
+        # Calculate quality
+        quality = self.calculate_face_quality(eyes_open, smile_data, expression, landmarks)
+        
+        return FaceAnalysis(
+            face_id=str(uuid.uuid4()),
+            bounding_box=face_bbox,
+            landmarks=landmarks,
+            attributes={
+                'eyes_open': eyes_open,
+                'smile': smile_data,
+                'expression': expression,
+                'head_pose': self.estimate_head_pose(landmarks)
+            },
+            quality_score=quality
+        )
+    
+    def select_best_photo(self, results: List[PhotoAnalysisResult]) -> PhotoAnalysisResult:
+        """Select the best photo from analysis results"""
+        # Filter out photos with closed eyes
+        photos_no_closed_eyes = [r for r in results if r.issues['closed_eyes'] == 0]
+        
+        if photos_no_closed_eyes:
+            # Return highest quality with no closed eyes
+            return max(photos_no_closed_eyes, key=lambda x: x.overall_quality_score)
+        else:
+            # Return highest quality overall (will need composite)
+            return max(results, key=lambda x: x.overall_quality_score)
+    
+    def calculate_photo_score(self, faces: List[FaceAnalysis]) -> float:
+        """Calculate overall photo quality score"""
+        if not faces:
+            return 0.0
+        
+        scores = []
+        for face in faces:
+            score = face.quality_score
+            
+            # Heavy penalty for closed eyes
+            if not face.attributes['eyes_open']['detected']:
+                score *= 0.3
+            
+            # Bonus for smiling
+            if face.attributes['smile']['detected']:
+                score *= (1 + face.attributes['smile']['intensity'] * 0.3)
+            
+            # Penalty for poor head angle
+            head_pose = face.attributes['head_pose']
+            if abs(head_pose['yaw']) > 30 or abs(head_pose['pitch']) > 20:
+                score *= 0.8
+            
+            scores.append(score)
+        
+        # Return average score
+        return sum(scores) / len(scores)
+```
+
+### Feature 2: Composite Face Blending
+
+#### Algorithm Flow
+```
+1. Face Alignment
+   ├─ Detect landmarks on source and target faces
+   ├─ Calculate affine transformation matrix
+   └─ Warp source face to match target pose
+
+2. Face Extraction
+   ├─ Create face mask using landmarks
+   ├─ Feather mask edges for smooth blending
+   └─ Extract face region from source
+
+3. Color Matching
+   ├─ Analyze skin tone in target photo
+   ├─ Adjust source face colors to match
+   └─ Match lighting conditions
+
+4. Seamless Blending
+   ├─ Use Poisson blending or similar
+   ├─ Blend face into target photo
+   └─ Refine edges and transitions
+
+5. Post-Processing
+   ├─ Denoise if needed
+   ├─ Sharpen details
+   └─ Final quality check
+```
+
+#### Implementation Code
+
+```python
+# backend/services/face_compositor.py
+
+import cv2
+import numpy as np
+from typing import Tuple
+
+class FaceCompositor:
+    def __init__(self):
+        self.face_detector = FaceDetector()
+        self.landmark_detector = LandmarkDetector()
+    
+    async def create_composite(
+        self,
+        base_image_url: str,
+        face_swaps: List[Dict[str, any]]
+    ) -> str:
+        """
+        Create composite image by swapping faces
+        
+        Args:
+            base_image_url: URL of the base/target photo
+            face_swaps: List of {person_index, source_photo_url, face_bbox}
+        
+        Returns:
+            URL of composite image
+        """
+        # Load base image
+        base_image = await self.load_image(base_image_url)
+        result_image = base_image.copy()
+        
+        # Perform each face swap
+        for swap in face_swaps:
+            source_image = await self.load_image(swap['source_photo_url'])
+            
+            result_image = await self.swap_face(
+                source_image=source_image,
+                source_bbox=swap['source_bbox'],
+                target_image=result_image,
+                target_bbox=swap['target_bbox']
+            )
+        
+        # Save and return composite
+        composite_url = await self.save_composite(result_image)
+        return composite_url
+    
+    async def swap_face(
+        self,
+        source_image: np.ndarray,
+        source_bbox: Dict,
+        target_image: np.ndarray,
+        target_bbox: Dict
+    ) -> np.ndarray:
+        """Swap a single face from source to target"""
+        
+        # 1. Get landmarks
+        source_landmarks = await self.landmark_detector.detect(
+            source_image, source_bbox
+        )
+        target_landmarks = await self.landmark_detector.detect(
+            target_image, target_bbox
+        )
+        
+        # 2. Align face
+        aligned_face, transform_matrix = self.align_face(
+            source_image,
+            source_landmarks,
+            target_landmarks
+        )
+        
+        # 3. Create mask
+        mask = self.create_face_mask(target_landmarks, target_image.shape[:2])
+        
+        # 4. Color correction
+        aligned_face = self.match_color(
+            aligned_face,
+            target_image,
+            mask
+        )
+        
+        # 5. Seamless blending
+        center = self.get_mask_center(target_bbox)
+        result = cv2.seamlessClone(
+            aligned_face,
+            target_image,
+            mask,
+            center,
+            cv2.NORMAL_CLONE
+        )
+        
+        return result
+    
+    def align_face(
+        self,
+        source_image: np.ndarray,
+        source_landmarks: np.ndarray,
+        target_landmarks: np.ndarray
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """Align source face to match target pose"""
+        
+        # Use key points: eyes, nose, mouth corners
+        source_points = self.get_key_points(source_landmarks)
+        target_points = self.get_key_points(target_landmarks)
+        
+        # Calculate transformation matrix
+        transform_matrix = cv2.estimateAffinePartial2D(
+            source_points,
+            target_points
+        )[0]
+        
+        # Warp source image
+        aligned = cv2.warpAffine(
+            source_image,
+            transform_matrix,
+            (source_image.shape[1], source_image.shape[0])
+        )
+        
+        return aligned, transform_matrix
+    
+    def create_face_mask(
+        self,
+        landmarks: np.ndarray,
+        image_shape: Tuple[int, int]
+    ) -> np.ndarray:
+        """Create smooth face mask for blending"""
+        
+        mask = np.zeros(image_shape, dtype=np.uint8)
+        
+        # Get face contour points
+        face_contour = self.get_face_contour(landmarks)
+        
+        # Fill convex hull
+        hull = cv2.convexHull(face_contour)
+        cv2.fillConvexPoly(mask, hull, 255)
+        
+        # Feather edges
+        mask = cv2.GaussianBlur(mask, (15, 15), 10)
+        
+        return mask
+    
+    def match_color(
+        self,
+        source: np.ndarray,
+        target: np.ndarray,
+        mask: np.ndarray
+    ) -> np.ndarray:
+        """Match source face color to target lighting"""
+        
+        # Convert to LAB color space
+        source_lab = cv2.cvtColor(source, cv2.COLOR_BGR2LAB)
+        target_lab = cv2.cvtColor(target, cv2.COLOR_BGR2LAB)
+        
+        # Calculate mean and std for each channel in masked region
+        for channel in range(3):
+            source_mean, source_std = cv2.meanStdDev(
+                source_lab[:, :, channel],
+                mask=mask
+            )
+            target_mean, target_std = cv2.meanStdDev(
+                target_lab[:, :, channel],
+                mask=mask
+            )
+            
+            # Adjust source to match target
+            source_lab[:, :, channel] = (
+                (source_lab[:, :, channel] - source_mean) *
+                (target_std / source_std) +
+                target_mean
+            )
+        
+        # Convert back to BGR
+        result = cv2.cvtColor(source_lab, cv2.COLOR_LAB2BGR)
+        
+        return result
+```
+
+### Feature 3: Intelligent Eye-Opening Tool
+
+#### Implementation
+
+```python
+# backend/services/eye_opener.py
+
+class EyeOpener:
+    def __init__(self, model_path: str):
+        self.model = self.load_model(model_path)
+        self.landmark_detector = LandmarkDetector()
+    
+    async def open_eyes(
+        self,
+        image: np.ndarray,
+        face_bbox: Dict,
+        reference_image: np.ndarray = None
+    ) -> np.ndarray:
+        """
+        Open closed eyes in an image
+        
+        Args:
+            image: Image with closed eyes
+            face_bbox: Bounding box of face
+            reference_image: Optional reference image of same person with open eyes
+        
+        Returns:
+            Image with opened eyes
+        """
+        
+        # Detect landmarks
+        landmarks = await self.landmark_detector.detect(image, face_bbox)
+        
+        # Extract eye regions
+        left_eye_region = self.extract_eye_region(image, landmarks, 'left')
+        right_eye_region = self.extract_eye_region(image, landmarks, 'right')
+        
+        if reference_image:
+            # Use reference image eyes
+            ref_landmarks = await self.landmark_detector.detect(
+                reference_image,
+                face_bbox
+            )
+            left_eye_open = self.extract_eye_region(
+                reference_image,
+                ref_landmarks,
+                'left'
+            )
+            right_eye_open = self.extract_eye_region(
+                reference_image,
+                ref_landmarks,
+                'right'
+            )
+        else:
+            # Generate open eyes using AI model
+            left_eye_open = await self.generate_open_eye(left_eye_region)
+            right_eye_open = await self.generate_open_eye(right_eye_region)
+        
+        # Blend opened eyes into original image
+        result = image.copy()
+        result = self.blend_eye(result, left_eye_open, landmarks, 'left')
+        result = self.blend_eye(result, right_eye_open, landmarks, 'right')
+        
+        return result
+    
+    async def generate_open_eye(self, closed_eye_region: np.ndarray) -> np.ndarray:
+        """Generate realistic open eye from closed eye using AI"""
+        
+        # Preprocess
+        eye_tensor = self.preprocess_eye(closed_eye_region)
+        
+        # Run through generative model
+        with torch.no_grad():
+            open_eye_tensor = self.model(eye_tensor)
+        
+        # Postprocess
+        open_eye = self.postprocess_eye(open_eye_tensor)
+        
+        return open_eye
+    
+    def extract_eye_region(
+        self,
+        image: np.ndarray,
+        landmarks: np.ndarray,
+        eye: str  # 'left' or 'right'
+    ) -> np.ndarray:
+        """Extract eye region with padding"""
+        
+        if eye == 'left':
+            eye_points = landmarks[36:42]  # Left eye landmarks
+        else:
+            eye_points = landmarks[42:48]  # Right eye landmarks
+        
+        # Get bounding box with padding
+        x_coords = eye_points[:, 0]
+        y_coords = eye_points[:, 1]
+        
+        x1 = int(np.min(x_coords) - 10)
+        y1 = int(np.min(y_coords) - 10)
+        x2 = int(np.max(x_coords) + 10)
+        y2 = int(np.max(y_coords) + 10)
+        
+        # Extract region
+        eye_region = image[y1:y2, x1:x2]
+        
+        return eye_region
+    
+    def blend_eye(
+        self,
+        image: np.ndarray,
+        eye_region: np.ndarray,
+        landmarks: np.ndarray,
+        eye: str
+    ) -> np.ndarray:
+        """Seamlessly blend generated eye into image"""
+        
+        # Create mask for eye region
+        mask = self.create_eye_mask(landmarks, eye, image.shape[:2])
+        
+        # Position eye region
+        if eye == 'left':
+            eye_points = landmarks[36:42]
+        else:
+            eye_points = landmarks[42:48]
+        
+        center = tuple(np.mean(eye_points, axis=0).astype(int))
+        
+        # Seamless clone
+        result = cv2.seamlessClone(
+            eye_region,
+            image,
+            mask,
+            center,
+            cv2.NORMAL_CLONE
+        )
+        
+        return result
+```
+
+---
+
+## API Specifications
+
+### REST API Endpoints
+
+```typescript
+// Base URL: /api/v1
+
+/**
+ * Authentication
+ */
+POST   /auth/register
+POST   /auth/login
+POST   /auth/logout
+GET    /auth/me
+POST   /auth/refresh-token
+
+/**
+ * Photo Sessions
+ */
+POST   /sessions
+       Body: { name?: string }
+       Response: { sessionId: string, uploadUrl: string }
+
+GET    /sessions/:sessionId
+       Response: SessionDetails
+
+GET    /sessions
+       Query: { page: number, limit: number }
+       Response: { sessions: SessionSummary[], total: number }
+
+DELETE /sessions/:sessionId
+
+/**
+ * Photo Upload & Management
+ */
+POST   /sessions/:sessionId/photos
+       Body: FormData with image files
+       Response: { photos: PhotoUploadResult[] }
+
+GET    /sessions/:sessionId/photos
+       Response: { photos: PhotoDetails[] }
+
+DELETE /sessions/:sessionId/photos/:photoId
+
+/**
+ * Analysis
+ */
+POST   /sessions/:sessionId/analyze
+       Response: { jobId: string }
+
+GET    /jobs/:jobId
+       Response: JobStatus
+
+GET    /sessions/:sessionId/analysis
+       Response: SessionAnalysisResult
+
+/**
+ * Photo Selection
+ */
+POST   /sessions/:sessionId/select-best
+       Body: { photoId?: string } // Override AI selection
+       Response: { selectedPhotoId: string }
+
+/**
+ * Composite Creation
+ */
+POST   /sessions/:sessionId/composite
+       Body: {
+         basePhotoId: string,
+         faceSwaps: Array<{
+           personIndex: number,
+           sourcePhotoId: string
+         }>
+       }
+       Response: { jobId: string }
+
+GET    /composites/:compositeId
+       Response: CompositeDetails
+
+/**
+ * Eye Opening
+ */
+POST   /photos/:photoId/open-eyes
+       Body: {
+         faces: Array<{ faceId: string }>,
+         referencePhotoId?: string
+       }
+       Response: { jobId: string }
+
+/**
+ * Expression Adjustment
+ */
+POST   /photos/:photoId/adjust-expression
+       Body: {
+         faces: Array<{
+           faceId: string,
+           targetExpression: 'happy' | 'neutral'
+         }>
+       }
+       Response: { jobId: string }
+
+/**
+ * Export
+ */
+GET    /sessions/:sessionId/export
+       Query: { format: 'jpg'|'png', quality: number }
+       Response: { downloadUrl: string }
+
+POST   /sessions/:sessionId/share
+       Body: { platform: 'email'|'link', recipients?: string[] }
+       Response: { shareLink: string }
+```
+
+### WebSocket Events
+
+```typescript
+// Connect to: ws://api.domain.com/ws
+
+// Client sends:
+{
+  "action": "subscribe",
+  "sessionId": "uuid"
+}
+
+// Server sends progress updates:
+{
+  "event": "analysis_progress",
+  "sessionId": "uuid",
+  "progress": 45, // 0-100
+  "message": "Analyzing photo 3 of 5",
+  "currentStep": "face_detection"
+}
+
+{
+  "event": "analysis_complete",
+  "sessionId": "uuid",
+  "result": SessionAnalysisResult
+}
+
+{
+  "event": "composite_progress",
+  "compositeId": "uuid",
+  "progress": 70,
+  "message": "Blending face 2 of 3"
+}
+
+{
+  "event": "job_complete",
+  "jobId": "uuid",
+  "result": { ... }
+}
+
+{
+  "event": "error",
+  "message": "Error description",
+  "code": "ERROR_CODE"
+}
+```
+
+---
+
+## User Interface Components
+
+### Component Hierarchy
+
+```
+App
+├── AuthProvider
+├── Router
+    ├── HomePage
+    ├── DashboardPage
+    │   ├── SessionList
+    │   └── CreateSessionButton
+    ├── SessionPage
+    │   ├── PhotoUploader
+    │   │   ├── DragDropZone
+    │   │   └── UploadProgress
+    │   ├── PhotoGrid
+    │   │   ├── PhotoCard (for each photo)
+    │   │   │   ├── PhotoPreview
+    │   │   │   ├── QualityBadge
+    │   │   │   └── PhotoActions
+    │   │   └── EmptyState
+    │   ├── AnalysisPanel
+    │   │   ├── AnalysisProgress
+    │   │   ├── BestPhotoRecommendation
+    │   │   └── IssuesSummary
+    │   ├── CompositeTool (conditional)
+    │   │   ├── FaceSelector
+    │   │   │   ├── PersonCard (for each person)
+    │   │   │   └── ExpressionSelector
+    │   │   └── CompositePreview
+    │   └── ExportPanel
+    │       ├── DownloadButton
+    │       ├── ShareButtons
+    │       └── QualitySelector
+    ├── EditorPage
+    │   ├── ImageCanvas
+    │   ├── FaceOverlay (shows detected faces)
+    │   ├── ToolPanel
+    │   │   ├── EyeOpenerTool
+    │   │   ├── ExpressionTool
+    │   │   └── FaceSwapTool
+    │   └── HistoryPanel
+    └── SettingsPage
+        ├── AccountSettings
+        ├── PrivacySettings
+        └── SubscriptionManagement
+```
+
+### Key UI Components (React)
+
+```typescript
+// src/components/PhotoUploader.tsx
+
+import React, { useCallback, useState } from 'react';
+import { useDropzone } from 'react-dropzone';
+import { uploadPhotos } from '../api/photos';
+
+interface PhotoUploaderProps {
+  sessionId: string;
+  onUploadComplete: (photos: Photo[]) => void;
+}
+
+export const PhotoUploader: React.FC<PhotoUploaderProps> = ({
+  sessionId,
+  onUploadComplete
+}) => {
+  const [uploading, setUploading] = useState(false);
+  const [progress, setProgress] = useState(0);
+
+  const onDrop = useCallback(async (acceptedFiles: File[]) => {
+    setUploading(true);
+    
+    try {
+      const formData = new FormData();
+      acceptedFiles.forEach(file => {
+        formData.append('photos', file);
+      });
+
+      const result = await uploadPhotos(sessionId, formData, (progress) => {
+        setProgress(progress);
+      });
+
+      onUploadComplete(result.photos);
+    } catch (error) {
+      console.error('Upload failed:', error);
+      // Show error notification
+    } finally {
+      setUploading(false);
+      setProgress(0);
+    }
+  }, [sessionId, onUploadComplete]);
+
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop,
+    accept: {
+      'image/*': ['.jpg', '.jpeg', '.png', '.heic']
+    },
+    maxFiles: 20
+  });
+
+  return (
+    <div
+      {...getRootProps()}
+      className={`
+        border-2 border-dashed rounded-lg p-8 text-center
+        ${isDragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300'}
+        ${uploading ? 'opacity-50 pointer-events-none' : 'cursor-pointer'}
+      `}
+    >
+      <input {...getInputProps()} />
+      {uploading ? (
+        <div>
+          <p>Uploading... {progress}%</p>
+          <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
+            <div
+              className="bg-blue-500 h-2 rounded-full transition-all"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+        </div>
+      ) : isDragActive ? (
+        <p>Drop photos here...</p>
+      ) : (
+        <div>
+          <p className="text-lg font-medium">Drag & drop group photos here</p>
+          <p className="text-sm text-gray-500 mt-2">
+            or click to select files (max 20 photos)
+          </p>
+        </div>
+      )}
+    </div>
+  );
+};
+```
+
+```typescript
+// src/components/FaceSelector.tsx
+
+import React, { useState } from 'react';
+import { Face, Photo } from '../types';
+
+interface FaceSelectorProps {
+  personIndex: number;
+  photos: Photo[];
+  faces: Record<string, Face[]>; // photoId -> faces
+  onSelectFace: (personIndex: number, photoId: string, faceId: string) => void;
+  selectedFaceId?: string;
+}
+
+export const FaceSelector: React.FC<FaceSelectorProps> = ({
+  personIndex,
+  photos,
+  faces,
+  onSelectFace,
+  selectedFaceId
+}) => {
+  // Get all faces for this person across photos
+  const personFaces = photos
+    .flatMap(photo => {
+      const photoFaces = faces[photo.id] || [];
+      return photoFaces
+        .filter(face => face.personIndex === personIndex)
+        .map(face => ({ ...face, photoId: photo.id, photoUrl: photo.url }));
+    })
+    .sort((a, b) => b.qualityScore - a.qualityScore); // Best first
+
+  return (
+    <div className="space-y-4">
+      <h3 className="font-medium">Person {personIndex + 1}</h3>
+      <div className="grid grid-cols-4 gap-4">
+        {personFaces.map(face => (
+          <div
+            key={`${face.photoId}-${face.faceId}`}
+            onClick={() => onSelectFace(personIndex, face.photoId, face.faceId)}
+            className={`
+              relative cursor-pointer rounded-lg overflow-hidden
+              border-2 transition-all
+              ${selectedFaceId === face.faceId
+                ? 'border-blue-500 ring-2 ring-blue-200'
+                : 'border-gray-200 hover:border-gray-400'
+              }
+            `}
+          >
+            <img
+              src={face.photoUrl}
+              alt={`Face option`}
+              className="w-full h-32 object-cover"
+              style={{
+                objectPosition: `${face.boundingBox.x}px ${face.boundingBox.y}px`
+              }}
+            />
+            <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-2">
+              <div className="flex items-center justify-between text-white text-xs">
+                <span>
+                  {face.attributes.eyesOpen.detected ? '👁️ Open' : '👁️ Closed'}
+                </span>
+                <span>
+                  {face.attributes.smile.detected ? '😊' : '😐'}
+                </span>
+                <span className="font-medium">
+                  {Math.round(face.qualityScore)}%
+                </span>
+              </div>
+            </div>
+            {selectedFaceId === face.faceId && (
+              <div className="absolute top-2 right-2 bg-blue-500 text-white rounded-full w-6 h-6 flex items-center justify-center">
+                ✓
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+```
+
+```typescript
+// src/components/CompositeTool.tsx
+
+import React, { useState } from 'react';
+import { FaceSelector } from './FaceSelector';
+import { createComposite } from '../api/composite';
+
+interface CompositeToolProps {
+  sessionId: string;
+  basePhotoId: string;
+  photos: Photo[];
+  faces: Record<string, Face[]>;
+  onCompositeCreated: (compositeUrl: string) => void;
+}
+
+export const CompositeTool: React.FC<CompositeToolProps> = ({
+  sessionId,
+  basePhotoId,
+  photos,
+  faces,
+  onCompositeCreated
+}) => {
+  const [selectedFaces, setSelectedFaces] = useState<Record<number, {
+    photoId: string;
+    faceId: string;
+  }>>({});
+  const [generating, setGenerating] = useState(false);
+
+  // Determine number of unique people
+  const numPeople = Math.max(
+    ...Object.values(faces).flatMap(faceList => 
+      faceList.map(f => f.personIndex)
+    )
+  ) + 1;
+
+  const handleSelectFace = (personIndex: number, photoId: string, faceId: string) => {
+    setSelectedFaces(prev => ({
+      ...prev,
+      [personIndex]: { photoId, faceId }
+    }));
+  };
+
+  const handleGenerateComposite = async () => {
+    setGenerating(true);
+    
+    try {
+      const faceSwaps = Object.entries(selectedFaces).map(([personIndex, data]) => ({
+        personIndex: parseInt(personIndex),
+        sourcePhotoId: data.photoId
+      }));
+
+      const result = await createComposite(sessionId, {
+        basePhotoId,
+        faceSwaps
+      });
+
+      // Poll for completion
+      const compositeUrl = await pollCompositeStatus(result.jobId);
+      
+      onCompositeCreated(compositeUrl);
+    } catch (error) {
+      console.error('Failed to create composite:', error);
+      // Show error
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const allSelected = Object.keys(selectedFaces).length === numPeople;
+
+  return (
+    <div className="space-y-6 p-6 bg-white rounded-lg shadow">
+      <div className="flex items-center justify-between">
+        <h2 className="text-2xl font-bold">Create Perfect Photo</h2>
+        <button
+          onClick={handleGenerateComposite}
+          disabled={!allSelected || generating}
+          className={`
+            px-6 py-2 rounded-lg font-medium
+            ${allSelected && !generating
+              ? 'bg-blue-500 text-white hover:bg-blue-600'
+              : 'bg-gray-200 text-gray-500 cursor-not-allowed'
+            }
+          `}
+        >
+          {generating ? 'Generating...' : 'Generate Composite'}
+        </button>
+      </div>
+
+      <p className="text-gray-600">
+        Select the best expression for each person to create your perfect group photo.
+      </p>
+
+      <div className="space-y-8">
+        {Array.from({ length: numPeople }, (_, i) => (
+          <FaceSelector
+            key={i}
+            personIndex={i}
+            photos={photos}
+            faces={faces}
+            onSelectFace={handleSelectFace}
+            selectedFaceId={selectedFaces[i]?.faceId}
+          />
+        ))}
+      </div>
+    </div>
+  );
+};
+```
+
+---
+
+## AI/ML Pipeline
+
+### Model Requirements
+
+```yaml
+Face Detection:
+  - Model: MediaPipe Face Detection or YOLOv8-face
+  - Input: RGB image (any size)
+  - Output: Bounding boxes + confidence scores
+  - Performance: >30 FPS on CPU, >100 FPS on GPU
+  - Accuracy: >95% detection rate
+
+Face Landmarks:
+  - Model: MediaPipe Face Mesh (468 landmarks) or dlib (68 landmarks)
+  - Input: Face crop (224x224)
+  - Output: Landmark coordinates (x, y) + confidence
+  - Performance: >50 FPS on CPU
+  - Accuracy: <2px error on key points
+
+Eye State Classification:
+  - Model: Custom CNN or MobileNetV3-based classifier
+  - Input: Eye region crop (64x32)
+  - Output: [open, closed] probability
+  - Training Data: 10k+ labeled eye images
+  - Accuracy: >95% precision
+
+Expression Classification:
+  - Model: Fine-tuned ResNet50 or EfficientNet
+  - Input: Face crop (224x224)
+  - Output: [happy, sad, neutral, surprised, angry] probabilities
+  - Training Data: FER2013 or AffectNet dataset
+  - Accuracy: >85% on validation set
+
+Face Swapping:
+  - Model: InsightFace or SimSwap
+  - Input: Source face + target face
+  - Output: Swapped face (aligned to target)
+  - Performance: 2-5 seconds per face on GPU
+  - Quality: FID score <15
+
+Eye Generation (optional advanced feature):
+  - Model: GAN-based eye generator (StyleGAN3 or custom)
+  - Input: Closed eye region + person ID
+  - Output: Open eye region (realistic)
+  - Training: 50k+ eye pairs dataset
+  - Quality: >90% realism score by human evaluators
+```
+
+### Model Serving Architecture
+
+```python
+# backend/ml/model_server.py
+
+from fastapi import FastAPI
+from pydantic import BaseModel
+import torch
+import numpy as np
+from PIL import Image
+import io
+
+app = FastAPI()
+
+class ModelServer:
+    def __init__(self):
+        self.face_detector = self.load_face_detector()
+        self.landmark_detector = self.load_landmark_detector()
+        self.eye_classifier = self.load_eye_classifier()
+        self.expression_classifier = self.load_expression_classifier()
+        self.face_swapper = self.load_face_swapper()
+        
+        # Move models to GPU if available
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        
+    def load_face_detector(self):
+        # Load MediaPipe or YOLOv8 model
+        import mediapipe as mp
+        return mp.solutions.face_detection.FaceDetection(
+            min_detection_confidence=0.7
+        )
+    
+    def load_landmark_detector(self):
+        import mediapipe as mp
+        return mp.solutions.face_mesh.FaceMesh(
+            static_image_mode=True,
+            max_num_faces=10
+        )
+    
+    def load_eye_classifier(self):
+        # Load custom eye state classifier
+        model = torch.jit.load('models/eye_classifier.pt')
+        model.to(self.device)
+        model.eval()
+        return model
+    
+    def load_expression_classifier(self):
+        # Load expression classifier
+        from torchvision import models
+        model = models.resnet50(pretrained=False)
+        model.fc = torch.nn.Linear(2048, 5)  # 5 expressions
+        model.load_state_dict(torch.load('models/expression_classifier.pth'))
+        model.to(self.device)
+        model.eval()
+        return model
+    
+    def load_face_swapper(self):
+        # Load InsightFace or similar
+        import insightface
+        model = insightface.app.FaceAnalysis()
+        model.prepare(ctx_id=0 if torch.cuda.is_available() else -1)
+        return model
+
+# Global model instance
+model_server = ModelServer()
+
+class DetectionRequest(BaseModel):
+    image_base64: str
+
+@app.post("/detect-faces")
+async def detect_faces(request: DetectionRequest):
+    # Decode image
+    image = Image.open(io.BytesIO(base64.b64decode(request.image_base64)))
+    image_np = np.array(image)
+    
+    # Detect faces
+    results = model_server.face_detector.process(image_np)
+    
+    faces = []
+    if results.detections:
+        for detection in results.detections:
+            bbox = detection.location_data.relative_bounding_box
+            faces.append({
+                'x': bbox.xmin,
+                'y': bbox.ymin,
+                'width': bbox.width,
+                'height': bbox.height,
+                'confidence': detection.score[0]
+            })
+    
+    return {'faces': faces}
+
+@app.post("/analyze-face")
+async def analyze_face(request: dict):
+    # Get face crop from request
+    image = decode_image(request['image_base64'])
+    bbox = request['bbox']
+    
+    # Crop face
+    face_crop = crop_face(image, bbox)
+    
+    # Get landmarks
+    landmarks = model_server.landmark_detector.process(face_crop)
+    
+    # Classify eye state
+    left_eye_crop = extract_eye(face_crop, landmarks, 'left')
+    right_eye_crop = extract_eye(face_crop, landmarks, 'right')
+    
+    left_eye_open = classify_eye_state(model_server.eye_classifier, left_eye_crop)
+    right_eye_open = classify_eye_state(model_server.eye_classifier, right_eye_crop)
+    
+    # Classify expression
+    expression, confidence = classify_expression(
+        model_server.expression_classifier,
+        face_crop
+    )
+    
+    return {
+        'landmarks': landmarks,
+        'eyes_open': left_eye_open and right_eye_open,
+        'expression': expression,
+        'expression_confidence': confidence
+    }
+```
+
+### Training Pipeline (for custom models)
+
+```python
+# ml/training/train_eye_classifier.py
+
+import torch
+import torch.nn as nn
+from torch.utils.data import Dataset, DataLoader
+from torchvision import transforms, models
+import albumentations as A
+
+class EyeDataset(Dataset):
+    def __init__(self, image_paths, labels, transform=None):
+        self.image_paths = image_paths
+        self.labels = labels
+        self.transform = transform
+    
+    def __len__(self):
+        return len(self.image_paths)
+    
+    def __getitem__(self, idx):
+        image = Image.open(self.image_paths[idx])
+        label = self.labels[idx]  # 0 = closed, 1 = open
+        
+        if self.transform:
+            image = self.transform(image)
+        
+        return image, label
+
+def create_eye_classifier():
+    model = models.mobilenet_v3_small(pretrained=True)
+    model.classifier[3] = nn.Linear(1024, 2)  # Binary classification
+    return model
+
+def train_eye_classifier(train_loader, val_loader, epochs=50):
+    model = create_eye_classifier()
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    model.to(device)
+    
+    criterion = nn.CrossEntropyLoss()
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer, mode='max', patience=5
+    )
+    
+    best_acc = 0.0
+    
+    for epoch in range(epochs):
+        # Training phase
+        model.train()
+        train_loss = 0.0
+        train_correct = 0
+        
+        for images, labels in train_loader:
+            images, labels = images.to(device), labels.to(device)
+            
+            optimizer.zero_grad()
+            outputs = model(images)
+            loss = criterion(outputs, labels)
+            loss.backward()
+            optimizer.step()
+            
+            train_loss += loss.item()
+            _, preds = torch.max(outputs, 1)
+            train_correct += (preds == labels).sum().item()
+        
+        # Validation phase
+        model.eval()
+        val_correct = 0
+        
+        with torch.no_grad():
+            for images, labels in val_loader:
+                images, labels = images.to(device), labels.to(device)
+                outputs = model(images)
+                _, preds = torch.max(outputs, 1)
+                val_correct += (preds == labels).sum().item()
+        
+        val_acc = val_correct / len(val_loader.dataset)
+        scheduler.step(val_acc)
+        
+        print(f'Epoch {epoch+1}/{epochs}: Val Acc = {val_acc:.4f}')
+        
+        # Save best model
+        if val_acc > best_acc:
+            best_acc = val_acc
+            torch.save(model.state_dict(), 'models/eye_classifier_best.pth')
+    
+    return model
+
+# Data augmentation
+transform_train = transforms.Compose([
+    transforms.Resize((64, 32)),
+    transforms.RandomHorizontalFlip(),
+    transforms.ColorJitter(brightness=0.2, contrast=0.2),
+    transforms.ToTensor(),
+    transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+])
+
+transform_val = transforms.Compose([
+    transforms.Resize((64, 32)),
+    transforms.ToTensor(),
+    transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+])
+
+# Create datasets and dataloaders
+train_dataset = EyeDataset(train_images, train_labels, transform_train)
+val_dataset = EyeDataset(val_images, val_labels, transform_val)
+
+train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True, num_workers=4)
+val_loader = DataLoader(val_dataset, batch_size=64, shuffle=False, num_workers=4)
+
+# Train the model
+trained_model = train_eye_classifier(train_loader, val_loader)
+```
+
+---
+
+## Security & Privacy
+
+### Data Security Measures
+
+```yaml
+Encryption:
+  - At Rest: AES-256 encryption for stored images
+  - In Transit: TLS 1.3 for all API communications
+  - Database: Encrypted PostgreSQL with row-level security
+
+Authentication:
+  - JWT tokens with short expiration (15 min access, 7 day refresh)
+  - Password hashing with bcrypt (cost factor 12)
+  - Optional 2FA with TOTP
+  - OAuth integration (Google, Apple, Facebook)
+
+Authorization:
+  - Role-based access control (RBAC)
+  - Session-level permissions
+  - API key authentication for enterprise users
+
+Data Retention:
+  - User uploads: Deleted after 30 days (configurable)
+  - Processed images: User can permanently delete anytime
+  - Anonymized analytics: Retained for 90 days
+  - Account deletion: Complete data purge within 7 days
+```
+
+### Privacy Implementation
+
+```python
+# backend/middleware/privacy.py
+
+from functools import wraps
+from flask import request, jsonify
+import hashlib
+
+class PrivacyManager:
+    def __init__(self):
+        self.anonymization_enabled = True
+    
+    def anonymize_image_metadata(self, image_path):
+        """Remove EXIF data and other identifying information"""
+        from PIL import Image
+        
+        image = Image.open(image_path)
+        
+        # Remove EXIF data
+        data = list(image.getdata())
+        image_without_exif = Image.new(image.mode, image.size)
+        image_without_exif.putdata(data)
+        
+        return image_without_exif
+    
+    def hash_user_identifier(self, user_id):
+        """Create anonymous user hash for analytics"""
+        salt = "your-secret-salt"
+        return hashlib.sha256(f"{user_id}{salt}".encode()).hexdigest()
+    
+    def check_consent(self, user_id, consent_type):
+        """Verify user consent for specific operations"""
+        # Query consent table
+        pass
+
+def require_consent(consent_type):
+    """Decorator to ensure user has given consent"""
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            user_id = request.user_id
+            
+            if not privacy_manager.check_consent(user_id, consent_type):
+                return jsonify({
+                    'error': 'Consent required',
+                    'consent_type': consent_type
+                }), 403
+            
+            return f(*args, **kwargs)
+        return decorated_function
+    return decorator
+
+# Usage
+@app.post('/sessions/<session_id>/analyze')
+@require_consent('ai_processing')
+async def analyze_session(session_id):
+    # Process session
+    pass
+```
+
+### GDPR/Privacy Compliance
+
+```typescript
+// src/services/privacy.ts
+
+export class PrivacyService {
+  async requestDataExport(userId: string): Promise<string> {
+    /**
+     * Export all user data in machine-readable format
+     * as required by GDPR Article 20
+     */
+    const userData = await this.gatherUserData(userId);
+    const zipFile = await this.createDataArchive(userData);
+    return zipFile;
+  }
+
+  async deleteUserData(userId: string): Promise<void> {
+    /**
+     * Complete data deletion as required by GDPR Article 17
+     * ("Right to be forgotten")
+     */
+    await Promise.all([
+      this.deleteUserAccount(userId),
+      this.deleteUserPhotos(userId),
+      this.deleteUserSessions(userId),
+      this.deleteProcessingJobs(userId),
+      this.anonymizeAnalytics(userId)
+    ]);
+  }
+
+  async updateConsent(userId: string, consents: ConsentRecord): Promise<void> {
+    /**
+     * Update user consent preferences
+     */
+    await db.consents.upsert({
+      userId,
+      analytics: consents.analytics,
+      marketing: consents.marketing,
+      aiProcessing: consents.aiProcessing,
+      dataRetention: consents.dataRetention,
+      updatedAt: new Date()
+    });
+  }
+}
+```
+
+---
+
+## Testing Requirements
+
+### Testing Strategy
+
+```yaml
+Unit Tests:
+  - Coverage Target: >80%
+  - Framework: Jest (Node.js), pytest (Python)
+  - Mock external APIs and AI models
+  - Test all utility functions and business logic
+
+Integration Tests:
+  - API endpoint tests
+  - Database operations
+  - File upload/download flows
+  - WebSocket communication
+
+AI Model Tests:
+  - Accuracy benchmarks on test datasets
+  - Performance (latency, throughput)
+  - Edge cases (occluded faces, poor lighting, etc.)
+
+End-to-End Tests:
+  - Framework: Playwright or Cypress
+  - User workflows: Upload → Analyze → Composite → Export
+  - Cross-browser testing (Chrome, Firefox, Safari)
+  - Mobile responsive testing
+
+Performance Tests:
+  - Load testing with k6 or Locust
+  - Concurrent users: 100, 500, 1000
+  - Image processing throughput
+  - Database query optimization
+
+Security Tests:
+  - OWASP Top 10 vulnerability scanning
+  - Authentication/authorization bypasses
+  - SQL injection, XSS, CSRF
+  - API rate limiting
+```
+
+### Test Examples
+
+```typescript
+// tests/api/sessions.test.ts
+
+import { describe, it, expect, beforeEach } from '@jest/globals';
+import request from 'supertest';
+import app from '../src/app';
+
+describe('POST /api/v1/sessions', () => {
+  let authToken: string;
+
+  beforeEach(async () => {
+    // Get auth token
+    const authResponse = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ email: 'test@example.com', password: 'password123' });
+    
+    authToken = authResponse.body.token;
+  });
+
+  it('should create a new session', async () => {
+    const response = await request(app)
+      .post('/api/v1/sessions')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({ name: 'Test Session' });
+
+    expect(response.status).toBe(201);
+    expect(response.body).toHaveProperty('sessionId');
+    expect(response.body).toHaveProperty('uploadUrl');
+  });
+
+  it('should reject unauthorized requests', async () => {
+    const response = await request(app)
+      .post('/api/v1/sessions')
+      .send({ name: 'Test Session' });
+
+    expect(response.status).toBe(401);
+  });
+});
+
+describe('POST /api/v1/sessions/:sessionId/analyze', () => {
+  it('should analyze uploaded photos', async () => {
+    // Create session and upload photos
+    const session = await createTestSession();
+    await uploadTestPhotos(session.id, 5);
+
+    // Request analysis
+    const response = await request(app)
+      .post(`/api/v1/sessions/${session.id}/analyze`)
+      .set('Authorization', `Bearer ${authToken}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toHaveProperty('jobId');
+
+    // Wait for job completion
+    const result = await pollJobStatus(response.body.jobId);
+    
+    expect(result.status).toBe('completed');
+    expect(result.result).toHaveProperty('bestPhotoId');
+    expect(result.result.photos).toHaveLength(5);
+  });
+
+  it('should handle empty sessions', async () => {
+    const session = await createTestSession();
+
+    const response = await request(app)
+      .post(`/api/v1/sessions/${session.id}/analyze`)
+      .set('Authorization', `Bearer ${authToken}`);
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toContain('No photos');
+  });
+});
+```
+
+```python
+# tests/ml/test_face_detector.py
+
+import pytest
+import numpy as np
+from PIL import Image
+from app.ml.face_detector import FaceDetector
+
+@pytest.fixture
+def face_detector():
+    return FaceDetector()
+
+@pytest.fixture
+def sample_image():
+    # Load test image with known faces
+    return Image.open('tests/fixtures/group_photo.jpg')
+
+def test_detect_faces(face_detector, sample_image):
+    """Test basic face detection"""
+    faces = face_detector.detect(np.array(sample_image))
+    
+    assert len(faces) == 5  # Known number of faces in test image
+    assert all(0 <= f['confidence'] <= 1 for f in faces)
+    assert all('x' in f and 'y' in f for f in faces)
+
+def test_detect_landmarks(face_detector, sample_image):
+    """Test facial landmark detection"""
+    faces = face_detector.detect(np.array(sample_image))
+    
+    for face in faces:
+        landmarks = face_detector.get_landmarks(sample_image, face['bbox'])
+        
+        assert 'left_eye' in landmarks
+        assert 'right_eye' in landmarks
+        assert 'nose' in landmarks
+        assert 'mouth_left' in landmarks
+        assert 'mouth_right' in landmarks
+
+def test_eye_detection_accuracy():
+    """Test eye state classification accuracy"""
+    from app.ml.eye_classifier import EyeClassifier
+    
+    classifier = EyeClassifier()
+    
+    # Load validation dataset
+    open_eyes = load_eye_images('tests/fixtures/eyes_open/')
+    closed_eyes = load_eye_images('tests/fixtures/eyes_closed/')
+    
+    # Test open eyes
+    open_correct = sum(
+        classifier.predict(img)['open'] > 0.9
+        for img in open_eyes
+    )
+    
+    # Test closed eyes
+    closed_correct = sum(
+        classifier.predict(img)['closed'] > 0.9
+        for img in closed_eyes
+    )
+    
+    open_accuracy = open_correct / len(open_eyes)
+    closed_accuracy = closed_correct / len(closed_eyes)
+    
+    assert open_accuracy > 0.95, f"Open eye accuracy: {open_accuracy}"
+    assert closed_accuracy > 0.95, f"Closed eye accuracy: {closed_accuracy}"
+
+@pytest.mark.performance
+def test_detection_performance(face_detector, sample_image):
+    """Test face detection speed"""
+    import time
+    
+    iterations = 100
+    start = time.time()
+    
+    for _ in range(iterations):
+        face_detector.detect(np.array(sample_image))
+    
+    elapsed = time.time() - start
+    fps = iterations / elapsed
+    
+    assert fps > 10, f"Detection too slow: {fps} FPS"
+```
+
+---
+
+## Deployment & DevOps
+
+### Environment Configuration
+
+```bash
+# .env.example
+
+# Application
+NODE_ENV=production
+PORT=3000
+API_URL=https://api.yourdomain.com
+FRONTEND_URL=https://yourdomain.com
+
+# Database
+DATABASE_URL=postgresql://user:password@localhost:5432/photoselector
+REDIS_URL=redis://localhost:6379
+
+# Storage
+AWS_ACCESS_KEY_ID=your_access_key
+AWS_SECRET_ACCESS_KEY=your_secret_key
+AWS_S3_BUCKET=photo-selector-uploads
+AWS_REGION=us-east-1
+
+# AI/ML Services
+ML_SERVICE_URL=http://ml-server:8080
+AZURE_FACE_API_KEY=your_azure_key
+AZURE_FACE_ENDPOINT=https://your-resource.cognitiveservices.azure.com
+
+# Authentication
+JWT_SECRET=your-jwt-secret-key
+JWT_EXPIRES_IN=15m
+REFRESH_TOKEN_EXPIRES_IN=7d
+
+# Email (SendGrid, Mailgun, etc.)
+SMTP_HOST=smtp.sendgrid.net
+SMTP_PORT=587
+SMTP_USER=apikey
+SMTP_PASSWORD=your_smtp_password
+
+# Monitoring
+SENTRY_DSN=https://your-sentry-dsn@sentry.io/project-id
+LOG_LEVEL=info
+
+# Feature Flags
+ENABLE_COMPOSITE=true
+ENABLE_EYE_OPENER=true
+ENABLE_EXPRESSION_ADJUST=true
+```
+
+### Docker Configuration
+
+```dockerfile
+# Dockerfile (Backend API)
+
+FROM node:18-alpine AS base
+
+WORKDIR /app
+
+# Install dependencies
+COPY package*.json ./
+RUN npm ci --only=production
+
+# Copy source
+COPY . .
+
+# Build TypeScript
+RUN npm run build
+
+FROM node:18-alpine
+
+WORKDIR /app
+
+# Copy from base
+COPY --from=base /app/node_modules ./node_modules
+COPY --from=base /app/dist ./dist
+COPY --from=base /app/package.json ./
+
+EXPOSE 3000
+
+CMD ["node", "dist/server.js"]
+```
+
+```dockerfile
+# Dockerfile (ML Service)
+
+FROM python:3.10-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Download models
+RUN python -c "import insightface; insightface.app.FaceAnalysis().prepare(ctx_id=-1)"
+
+# Copy source
+COPY . .
+
+EXPOSE 8080
+
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
+```
+
+```yaml
+# docker-compose.yml
+
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: photoselector
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: photoselector
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - DATABASE_URL=postgresql://photoselector:password@postgres:5432/photoselector
+      - REDIS_URL=redis://redis:6379
+      - ML_SERVICE_URL=http://ml-service:8080
+    depends_on:
+      - postgres
+      - redis
+      - ml-service
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+
+  ml-service:
+    build:
+      context: ./ml-service
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    volumes:
+      - model_cache:/root/.insightface
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "80:80"
+    depends_on:
+      - api
+
+volumes:
+  postgres_data:
+  redis_data:
+  model_cache:
+```
+
+### CI/CD Pipeline
+
+```yaml
+# .github/workflows/deploy.yml
+
+name: Deploy to Production
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Run tests
+        run: npm test
+      
+      - name: Run linter
+        run: npm run lint
+
+  build-and-deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+      
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+      
+      - name: Build and push Docker images
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t $ECR_REGISTRY/photo-selector-api:$IMAGE_TAG ./backend
+          docker push $ECR_REGISTRY/photo-selector-api:$IMAGE_TAG
+          
+          docker build -t $ECR_REGISTRY/photo-selector-ml:$IMAGE_TAG ./ml-service
+          docker push $ECR_REGISTRY/photo-selector-ml:$IMAGE_TAG
+      
+      - name: Deploy to ECS
+        run: |
+          aws ecs update-service \
+            --cluster photo-selector \
+            --service api \
+            --force-new-deployment
+```
+
+---
+
+## Project Milestones
+
+### Phase 1: MVP (Weeks 1-4)
+
+```yaml
+Week 1:
+  - Setup project structure (monorepo with backend, frontend, ml-service)
+  - Configure databases (PostgreSQL, Redis)
+  - Implement authentication (JWT)
+  - Create basic UI components (upload, photo grid)
+  
+Week 2:
+  - Implement photo upload and storage (S3)
+  - Integrate face detection (MediaPipe)
+  - Build face analysis pipeline (eyes, smile detection)
+  - Create session management API
+  
+Week 3:
+  - Implement best photo selection algorithm
+  - Build photo comparison UI
+  - Add WebSocket for real-time updates
+  - Create export functionality
+  
+Week 4:
+  - Testing and bug fixes
+  - Performance optimization
+  - Documentation
+  - MVP launch
+```
+
+### Phase 2: Composite Features (Weeks 5-8)
+
+```yaml
+Week 5-6:
+  - Implement face swapping algorithm
+  - Build composite creation UI
+  - Add face selection interface
+  - Integrate Poisson blending
+  
+Week 7:
+  - Eye opening tool development
+  - Expression adjustment feature
+  - Batch processing improvements
+  
+Week 8:
+  - Quality assurance
+  - User testing and feedback
+  - Performance optimization
+  - Feature launch
+```
+
+### Phase 3: Enterprise & Advanced Features (Weeks 9-12)
+
+```yaml
+Week 9-10:
+  - API access for third parties
+  - Bulk processing for professionals
+  - Team collaboration tools
+  - Advanced analytics dashboard
+  
+Week 11:
+  - Mobile app development (React Native)
+  - Advanced AI model fine-tuning
+  - Custom branding options
+  
+Week 12:
+  - Security audit
+  - Load testing and scaling
+  - Enterprise customer onboarding
+  - Full launch
+```
+
+---
+
+## Getting Started (Replit Setup)
+
+### Quick Start Commands
+
+```bash
+# 1. Clone and setup
+git clone <repo-url>
+cd photo-selector
+
+# 2. Install dependencies
+npm install
+cd backend && npm install
+cd ../ml-service && pip install -r requirements.txt
+cd ../frontend && npm install
+
+# 3. Setup environment
+cp .env.example .env
+# Edit .env with your configuration
+
+# 4. Initialize database
+npm run db:migrate
+
+# 5. Start development servers
+npm run dev  # Starts all services concurrently
+
+# Or start individually:
+# Terminal 1: Backend API
+cd backend && npm run dev
+
+# Terminal 2: ML Service
+cd ml-service && uvicorn main:app --reload
+
+# Terminal 3: Frontend
+cd frontend && npm run dev
+```
+
+### Replit Configuration
+
+```toml
+# .replit
+
+run = "npm run dev"
+
+[packager]
+language = "nodejs"
+
+[packager.features]
+enabledForHosting = false
+packageSearch = true
+guessImports = true
+
+[languages.javascript]
+pattern = "**/{*.js,*.jsx,*.ts,*.tsx}"
+syntax = "javascript"
+
+[languages.python]
+pattern = "**/*.py"
+
+[env]
+NODE_ENV = "development"
+```
+
+---
+
+## References & Resources
+
+### Documentation
+- [MediaPipe Face Detection](https://google.github.io/mediapipe/solutions/face_detection)
+- [InsightFace Documentation](https://github.com/deepinsight/insightface)
+- [OpenCV Seamless Cloning](https://docs.opencv.org/master/df/da0/group__photo__clone.html)
+- [Next.js Documentation](https://nextjs.org/docs)
+- [FastAPI Documentation](https://fastapi.tiangolo.com/)
+
+### Academic Papers
+- "ArcFace: Additive Angular Margin Loss for Deep Face Recognition" (Deng et al., 2019)
+- "SimSwap: An Efficient Framework For High Fidelity Face Swapping" (Chen et al., 2020)
+- "Poisson Image Editing" (Pérez et al., 2003)
+
+### Third-Party Services
+- **Cloud Storage**: AWS S3, Google Cloud Storage, Cloudflare R2
+- **Face APIs**: Azure Face API, AWS Rekognition, Google Vision AI
+- **Monitoring**: Sentry, DataDog, New Relic
+- **Analytics**: Mixpanel, PostHog, Amplitude
+
+---
+
+**This specification is ready for implementation in Replit or any full-stack development environment. All features are technically feasible with current AI/ML technologies.**
