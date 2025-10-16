@@ -40,6 +40,7 @@ export function getSession() {
     cookie: {
       httpOnly: true,
       secure: true,
+      sameSite: "lax", // Allow cookies for same-site navigation and image loading
       maxAge: sessionTtl,
     },
   });

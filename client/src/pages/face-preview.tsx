@@ -284,9 +284,19 @@ function FacePreviewImage({
 }) {
   const [imageDimensions, setImageDimensions] = useState({ width: 0, height: 0 });
   const [containerDimensions, setContainerDimensions] = useState({ width: 0, height: 0 });
+  const [imageError, setImageError] = useState(false);
 
   return (
     <div className="relative w-full">
+      {imageError && (
+        <div className="absolute inset-0 flex items-center justify-center bg-muted/50 text-muted-foreground p-4 text-center">
+          <div>
+            <AlertCircle className="h-8 w-8 mx-auto mb-2" />
+            <p className="text-sm">Failed to load image</p>
+            <p className="text-xs mt-1">{photo.originalFilename}</p>
+          </div>
+        </div>
+      )}
       <img
         src={photo.fileUrl}
         alt={photo.originalFilename || "Photo"}
@@ -299,9 +309,11 @@ function FacePreviewImage({
           });
           setImageDimensions({ width: img.naturalWidth, height: img.naturalHeight });
           setContainerDimensions({ width: img.clientWidth, height: img.clientHeight });
+          setImageError(false);
         }}
         onError={(e) => {
           console.error("❌ Image failed to load:", photo.fileUrl, e);
+          setImageError(true);
         }}
         data-testid={`img-preview-${photo.id}`}
       />
