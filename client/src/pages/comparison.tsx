@@ -143,9 +143,15 @@ export default function Comparison() {
     );
   }
 
-  const sortedPhotos = [...photos].sort((a, b) => 
-    parseFloat(b.qualityScore) - parseFloat(a.qualityScore)
-  );
+  // Filter out photos with 0 faces and sort by quality score
+  const sortedPhotos = [...photos]
+    .filter(photo => {
+      const faces = photo.analysisData?.faces || [];
+      return faces.length > 0; // Only show photos with detected faces
+    })
+    .sort((a, b) => 
+      parseFloat(b.qualityScore) - parseFloat(a.qualityScore)
+    );
 
   // Component for photo with properly aligned bounding boxes
   const PhotoWithBoundingBoxes = ({ 
