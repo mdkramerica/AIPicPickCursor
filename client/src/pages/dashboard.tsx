@@ -356,20 +356,34 @@ export default function Dashboard() {
           <div className="mt-6 sm:mt-8">
             <div className="flex items-center justify-between mb-4 sm:mb-6">
               <h2 className="text-xl sm:text-2xl font-bold">Session Photos</h2>
-              {/* Desktop Analyze Button */}
-              <Button 
-                onClick={() => analyzeSessionMutation.mutate(selectedSession)}
-                disabled={!canAnalyze || analyzeSessionMutation.isPending}
-                data-testid="button-analyze-session"
-                className="hidden sm:flex"
-              >
-                {analyzeSessionMutation.isPending ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <Sparkles className="mr-2 h-4 w-4" />
+              <div className="flex gap-2">
+                {/* View Comparison Button (only show when completed) */}
+                {currentSession?.status === 'completed' && photos && photos.length > 0 && (
+                  <Button 
+                    variant="outline"
+                    onClick={() => window.location.href = `/session/${selectedSession}/compare`}
+                    data-testid="button-view-comparison"
+                    className="hidden sm:flex"
+                  >
+                    <Eye className="mr-2 h-4 w-4" />
+                    View Comparison
+                  </Button>
                 )}
-                Analyze Photos
-              </Button>
+                {/* Desktop Analyze Button */}
+                <Button 
+                  onClick={() => analyzeSessionMutation.mutate(selectedSession)}
+                  disabled={!canAnalyze || analyzeSessionMutation.isPending}
+                  data-testid="button-analyze-session"
+                  className="hidden sm:flex"
+                >
+                  {analyzeSessionMutation.isPending ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Sparkles className="mr-2 h-4 w-4" />
+                  )}
+                  Analyze Photos
+                </Button>
+              </div>
             </div>
             
             {!canAnalyze && photos && photos.length > 0 && photos.length < 2 && (
@@ -437,22 +451,34 @@ export default function Dashboard() {
         )}
       </main>
 
-      {/* Mobile Sticky Analyze Button */}
+      {/* Mobile Sticky Button */}
       {selectedSession && photos && photos.length > 0 && (
         <div className="fixed bottom-0 left-0 right-0 p-3 bg-background border-t sm:hidden z-40">
-          <Button 
-            onClick={() => analyzeSessionMutation.mutate(selectedSession)}
-            disabled={!canAnalyze || analyzeSessionMutation.isPending}
-            data-testid="button-analyze-session-mobile"
-            className="w-full min-h-[52px] text-base"
-          >
-            {analyzeSessionMutation.isPending ? (
-              <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-            ) : (
-              <Sparkles className="mr-2 h-5 w-5" />
-            )}
-            Analyze Photos
-          </Button>
+          {currentSession?.status === 'completed' ? (
+            <Button 
+              variant="outline"
+              onClick={() => window.location.href = `/session/${selectedSession}/compare`}
+              data-testid="button-view-comparison-mobile"
+              className="w-full min-h-[52px] text-base"
+            >
+              <Eye className="mr-2 h-5 w-5" />
+              View Comparison
+            </Button>
+          ) : (
+            <Button 
+              onClick={() => analyzeSessionMutation.mutate(selectedSession)}
+              disabled={!canAnalyze || analyzeSessionMutation.isPending}
+              data-testid="button-analyze-session-mobile"
+              className="w-full min-h-[52px] text-base"
+            >
+              {analyzeSessionMutation.isPending ? (
+                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+              ) : (
+                <Sparkles className="mr-2 h-5 w-5" />
+              )}
+              Analyze Photos
+            </Button>
+          )}
         </div>
       )}
     </div>

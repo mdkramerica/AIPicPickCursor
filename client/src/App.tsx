@@ -8,6 +8,7 @@ import { useAuth } from "@/hooks/useAuth";
 import NotFound from "@/pages/not-found";
 import Landing from "@/pages/landing";
 import Dashboard from "@/pages/dashboard";
+import Comparison from "@/pages/comparison";
 
 function Router() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -17,7 +18,10 @@ function Router() {
       {isLoading || !isAuthenticated ? (
         <Route path="/" component={Landing} />
       ) : (
-        <Route path="/" component={Dashboard} />
+        <>
+          <Route path="/" component={Dashboard} />
+          <Route path="/session/:sessionId/compare" component={Comparison} />
+        </>
       )}
       <Route component={NotFound} />
     </Switch>
