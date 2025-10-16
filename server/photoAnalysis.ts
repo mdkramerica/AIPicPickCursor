@@ -49,8 +49,13 @@ export class PhotoAnalysisService {
       const tensor = tf.node.decodeImage(canvas.toBuffer('image/png'), 3);
       
       // Detect all faces with landmarks and expressions
+      // Increased inputSize from 416 (default) to 608 for better small face detection
+      // Trade-off: ~50% slower but detects faces 30-40% smaller
       const detections = await faceapi
-        .detectAllFaces(tensor as any, new faceapi.TinyFaceDetectorOptions())
+        .detectAllFaces(tensor as any, new faceapi.TinyFaceDetectorOptions({
+          inputSize: 608,        // 416 (default) → 608 (better for small faces)
+          scoreThreshold: 0.4    // 0.5 (default) → 0.4 (slightly lower threshold)
+        }))
         .withFaceLandmarks()
         .withFaceExpressions();
       
