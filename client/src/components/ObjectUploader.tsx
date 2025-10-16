@@ -85,16 +85,12 @@ export function ObjectUploader({
     event.target.value = '';
   };
 
-  // For Safari iOS: use label to trigger native file input
-  const handleButtonClick = () => {
-    fileInputRef.current?.click();
-  };
-
   return (
     <div>
       {/* Native file input for Safari iOS compatibility */}
       <input
         ref={fileInputRef}
+        id="photo-upload-input"
         type="file"
         accept="image/*"
         multiple={maxNumberOfFiles > 1}
@@ -103,13 +99,18 @@ export function ObjectUploader({
         data-testid="input-file-native"
       />
       
-      <Button 
-        onClick={handleButtonClick} 
-        className={buttonClassName} 
-        data-testid="button-upload-photos"
-      >
-        {children}
-      </Button>
+      {/* Use label instead of programmatic click for Safari iOS */}
+      <label htmlFor="photo-upload-input" style={{ cursor: 'pointer' }}>
+        <Button 
+          asChild
+          className={buttonClassName} 
+          data-testid="button-upload-photos"
+        >
+          <span>
+            {children}
+          </span>
+        </Button>
+      </label>
 
       {showModal && (
         <DashboardModal
