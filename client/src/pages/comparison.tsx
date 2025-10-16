@@ -4,7 +4,9 @@ import { useAuth } from "@/hooks/useAuth";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, CheckCircle2, AlertCircle, Eye, EyeOff, Smile } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import { ArrowLeft, CheckCircle2, AlertCircle, Eye, EyeOff, Smile, Share2 } from "lucide-react";
+import { useState } from "react";
 
 type Photo = {
   id: string;
@@ -38,11 +40,57 @@ export default function Comparison() {
   const sessionId = params?.sessionId;
   const [, setLocation] = useLocation();
   const { user } = useAuth();
+  const { toast } = useToast();
+  const [isSharing, setIsSharing] = useState(false);
 
   const { data: photos, isLoading } = useQuery<Photo[]>({
     queryKey: ["/api/sessions", sessionId, "photos"],
     enabled: !!sessionId && !!user,
   });
+
+  const sharePhoto = async (photoUrl: string, filename: string) => {
+    if (!navigator.share) {
+      toast({
+        title: "Sharing not supported",
+        description: "Your browser doesn't support native sharing. Try using a mobile browser.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsSharing(true);
+    try {
+      // Fetch the image as a blob
+      const response = await fetch(photoUrl);
+      const blob = await response.blob();
+      
+      // Create a file from the blob
+      const file = new File([blob], filename, { type: blob.type });
+
+      // Use the Web Share API
+      await navigator.share({
+        files: [file],
+        title: 'Best Group Photo',
+        text: 'Check out this photo selected by AI!',
+      });
+
+      toast({
+        title: "Shared successfully!",
+        description: "Photo shared via your selected app",
+      });
+    } catch (error) {
+      // User cancelled or error occurred
+      if (error instanceof Error && error.name !== 'AbortError') {
+        toast({
+          title: "Sharing failed",
+          description: "Could not share the photo. Please try again.",
+          variant: "destructive",
+        });
+      }
+    } finally {
+      setIsSharing(false);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -202,6 +250,19 @@ export default function Comparison() {
                         </div>
                       ))}
                     </div>
+                  )}
+
+                  {/* Share button - only for winner */}
+                  {photo.isSelectedBest && (
+                    <Button
+                      onClick={() => sharePhoto(photo.fileUrl, photo.originalFilename)}
+                      disabled={isSharing}
+                      className="w-full mt-3"
+                      data-testid="button-share-winner"
+                    >
+                      <Share2 className="w-4 h-4 mr-2" />
+                      {isSharing ? "Sharing..." : "Share Best Photo"}
+                    </Button>
                   )}
                 </div>
               </Card>
