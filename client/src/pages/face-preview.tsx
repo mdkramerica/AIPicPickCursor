@@ -70,10 +70,10 @@ export default function FacePreview() {
 
   // Trigger detection on mount
   useEffect(() => {
-    if (sessionId && !detectFacesMutation.data && !detectFacesMutation.isPending) {
+    if (sessionId && !detectFacesMutation.data && !detectFacesMutation.isPending && photos && photos.length > 0) {
       detectFacesMutation.mutate();
     }
-  }, [sessionId]);
+  }, [sessionId, photos]);
 
   // Analyze with selected faces
   const analyzeWithSelectionMutation = useMutation({
@@ -181,10 +181,10 @@ export default function FacePreview() {
         )}
 
         {/* Photos with faces */}
-        {detectionResults && photos && (
+        {detectionResults && detectionResults.detections && photos && (
           <div className="space-y-6">
             {photos.map((photo) => {
-              const detection = detectionResults.detections.find((d) => d.photoId === photo.id);
+              const detection = detectionResults.detections?.find((d) => d.photoId === photo.id);
               if (!detection || detection.faces.length === 0) return null;
 
               return (
