@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, CheckCircle2, AlertCircle, Eye, EyeOff, Smile, Share2 } from "lucide-react";
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 
 type Photo = {
   id: string;
@@ -112,6 +112,123 @@ export default function Comparison() {
     parseFloat(b.qualityScore) - parseFloat(a.qualityScore)
   );
 
+  // Component for photo with properly aligned bounding boxes
+  const PhotoWithBoundingBoxes = ({ 
+    photo, 
+    faces 
+  }: { 
+    photo: Photo; 
+    faces: Photo['analysisData']['faces'] 
+  }) => {
+    const containerRef = useRef<HTMLDivElement>(null);
+    const imageRef = useRef<HTMLImageElement>(null);
+    const [overlayDimensions, setOverlayDimensions] = useState<{
+      width: number;
+      height: number;
+      offsetX: number;
+      offsetY: number;
+      scale: number;
+    } | null>(null);
+
+    const updateOverlayDimensions = () => {
+      const container = containerRef.current;
+      const image = imageRef.current;
+      
+      if (!container || !image || !image.naturalWidth) return;
+
+      const containerWidth = container.clientWidth;
+      const containerHeight = container.clientHeight;
+      const imageWidth = image.naturalWidth;
+      const imageHeight = image.naturalHeight;
+
+      // Calculate scale (object-contain logic)
+      const scale = Math.min(
+        containerWidth / imageWidth,
+        containerHeight / imageHeight
+      );
+
+      // Calculate displayed dimensions
+      const displayedWidth = imageWidth * scale;
+      const displayedHeight = imageHeight * scale;
+
+      // Calculate offset (centering logic)
+      const offsetX = (containerWidth - displayedWidth) / 2;
+      const offsetY = (containerHeight - displayedHeight) / 2;
+
+      setOverlayDimensions({
+        width: displayedWidth,
+        height: displayedHeight,
+        offsetX,
+        offsetY,
+        scale,
+      });
+    };
+
+    useEffect(() => {
+      const image = imageRef.current;
+      if (!image) return;
+
+      // Update on load
+      image.addEventListener('load', updateOverlayDimensions);
+      
+      // Update on resize
+      const resizeObserver = new ResizeObserver(updateOverlayDimensions);
+      if (containerRef.current) {
+        resizeObserver.observe(containerRef.current);
+      }
+
+      // Initial update if image already loaded
+      if (image.complete) {
+        updateOverlayDimensions();
+      }
+
+      return () => {
+        image.removeEventListener('load', updateOverlayDimensions);
+        resizeObserver.disconnect();
+      };
+    }, [photo.fileUrl]);
+
+    return (
+      <div ref={containerRef} className="relative bg-muted aspect-[4/3]">
+        <img
+          ref={imageRef}
+          src={photo.fileUrl}
+          alt={photo.originalFilename}
+          className="w-full h-full object-contain"
+          data-testid={`img-photo-${photo.id}`}
+        />
+        
+        {/* Face bounding boxes overlay - positioned to match displayed image */}
+        {overlayDimensions && (
+          <svg
+            className="absolute pointer-events-none"
+            style={{
+              left: `${overlayDimensions.offsetX}px`,
+              top: `${overlayDimensions.offsetY}px`,
+              width: `${overlayDimensions.width}px`,
+              height: `${overlayDimensions.height}px`,
+            }}
+            viewBox={`0 0 ${overlayDimensions.width} ${overlayDimensions.height}`}
+          >
+            {faces.map((face, faceIdx) => (
+              <rect
+                key={face.faceId}
+                x={face.boundingBox.x * overlayDimensions.width}
+                y={face.boundingBox.y * overlayDimensions.height}
+                width={face.boundingBox.width * overlayDimensions.width}
+                height={face.boundingBox.height * overlayDimensions.height}
+                fill="none"
+                stroke={face.attributes.eyesOpen.detected ? "#10b981" : "#ef4444"}
+                strokeWidth="3"
+                data-testid={`bbox-face-${photo.id}-${faceIdx}`}
+              />
+            ))}
+          </svg>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <div className="container mx-auto p-4 pb-20 max-w-7xl">
@@ -145,41 +262,13 @@ export default function Comparison() {
                 data-testid={`card-photo-${index}`}
               >
                 <div className="relative">
-                  {/* Photo with bounding boxes */}
-                  <div className="relative bg-muted aspect-[4/3]">
-                    <img
-                      src={photo.fileUrl}
-                      alt={photo.originalFilename}
-                      className="w-full h-full object-contain"
-                      data-testid={`img-photo-${index}`}
-                    />
-                    
-                    {/* Face bounding boxes overlay */}
-                    <svg
-                      className="absolute inset-0 w-full h-full pointer-events-none"
-                      viewBox="0 0 100 100"
-                      preserveAspectRatio="xMidYMid meet"
-                    >
-                      {faces.map((face, faceIdx) => (
-                        <rect
-                          key={face.faceId}
-                          x={face.boundingBox.x * 100}
-                          y={face.boundingBox.y * 100}
-                          width={face.boundingBox.width * 100}
-                          height={face.boundingBox.height * 100}
-                          fill="none"
-                          stroke={face.attributes.eyesOpen.detected ? "#10b981" : "#ef4444"}
-                          strokeWidth="2"
-                          data-testid={`bbox-face-${index}-${faceIdx}`}
-                        />
-                      ))}
-                    </svg>
-                  </div>
+                  {/* Photo with properly aligned bounding boxes */}
+                  <PhotoWithBoundingBoxes photo={photo} faces={faces} />
 
                   {/* Winner badge */}
                   {photo.isSelectedBest && (
                     <Badge
-                      className="absolute top-2 right-2 bg-primary text-primary-foreground"
+                      className="absolute top-2 right-2 bg-primary text-primary-foreground z-10"
                       data-testid={`badge-winner-${index}`}
                     >
                       <CheckCircle2 className="w-3 h-3 mr-1" />
