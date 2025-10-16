@@ -32,9 +32,10 @@ export default function Dashboard() {
   // Create session mutation
   const createSessionMutation = useMutation({
     mutationFn: async () => {
-      return await apiRequest("POST", "/api/sessions", {
+      const res = await apiRequest("POST", "/api/sessions", {
         name: `Session ${new Date().toLocaleString()}`,
       });
+      return await res.json() as PhotoSession;
     },
     onSuccess: (data: PhotoSession) => {
       queryClient.invalidateQueries({ queryKey: ["/api/sessions"] });
@@ -134,7 +135,8 @@ export default function Dashboard() {
   });
 
   const handleGetUploadParameters = async (file: any) => {
-    const response = await apiRequest("POST", "/api/objects/upload", {});
+    const res = await apiRequest("POST", "/api/objects/upload", {});
+    const response = await res.json() as { uploadURL: string };
     return {
       method: "PUT" as const,
       url: response.uploadURL,
@@ -142,9 +144,18 @@ export default function Dashboard() {
   };
 
   const handleUploadComplete = async (result: UploadResult<Record<string, unknown>, Record<string, unknown>>) => {
+    if (!result.successful || result.successful.length === 0) {
+      toast({
+        title: "Error",
+        description: "No files were successfully uploaded",
+        variant: "destructive",
+      });
+      return;
+    }
+
     const uploadedFiles = result.successful.map(file => ({
       url: file.uploadURL as string,
-      filename: file.name,
+      filename: file.name || "unknown",
     }));
     
     uploadPhotosMutation.mutate(uploadedFiles);
@@ -332,7 +343,7 @@ export default function Dashboard() {
                         <span className="text-sm text-muted-foreground truncate">
                           {photo.originalFilename}
                         </span>
-                        {photo.qualityScore && photo.qualityScore > 0 && (
+                        {photo.qualityScore && Number(photo.qualityScore) > 0 && (
                           <div className="flex items-center gap-1 text-xs text-muted-foreground">
                             <Eye className="h-3 w-3" />
                             <Smile className="h-3 w-3" />
@@ -347,16 +358,7 @@ export default function Dashboard() {
               <Card className="p-12 text-center">
                 <Upload className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                 <h3 className="text-xl font-semibold mb-2">No Photos Yet</h3>
-                <p className="text-muted-foreground mb-6">Upload at least 2 photos to start analysis</p>
-                <ObjectUploader
-                  maxNumberOfFiles={10}
-                  maxFileSize={10485760}
-                  onGetUploadParameters={handleGetUploadParameters}
-                  onComplete={handleUploadComplete}
-                >
-                  <Upload className="mr-2 h-4 w-4" />
-                  Upload Photos
-                </ObjectUploader>
+                <p className="text-muted-foreground">Use the "Upload Photos" button above to add at least 2 photos for analysis</p>
               </Card>
             )}
           </div>

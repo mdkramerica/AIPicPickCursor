@@ -46,8 +46,14 @@ export function ObjectUploader({
       .on("complete", (result) => {
         onComplete?.(result);
         setShowModal(false);
+        uppy.cancelAll();
       })
   );
+
+  const handleCloseModal = () => {
+    setShowModal(false);
+    uppy.cancelAll();
+  };
 
   return (
     <div>
@@ -55,12 +61,14 @@ export function ObjectUploader({
         {children}
       </Button>
 
-      <DashboardModal
-        uppy={uppy}
-        open={showModal}
-        onRequestClose={() => setShowModal(false)}
-        proudlyDisplayPoweredByUppy={false}
-      />
+      {showModal && (
+        <DashboardModal
+          uppy={uppy}
+          open={true}
+          onRequestClose={handleCloseModal}
+          proudlyDisplayPoweredByUppy={false}
+        />
+      )}
     </div>
   );
 }
