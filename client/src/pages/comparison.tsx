@@ -210,19 +210,62 @@ export default function Comparison() {
             }}
             viewBox={`0 0 ${overlayDimensions.width} ${overlayDimensions.height}`}
           >
-            {faces.map((face, faceIdx) => (
-              <rect
-                key={face.faceId}
-                x={face.boundingBox.x * overlayDimensions.width}
-                y={face.boundingBox.y * overlayDimensions.height}
-                width={face.boundingBox.width * overlayDimensions.width}
-                height={face.boundingBox.height * overlayDimensions.height}
-                fill="none"
-                stroke={face.attributes.eyesOpen.detected ? "#10b981" : "#ef4444"}
-                strokeWidth="3"
-                data-testid={`bbox-face-${photo.id}-${faceIdx}`}
-              />
-            ))}
+            {faces.map((face, faceIdx) => {
+              const x = face.boundingBox.x * overlayDimensions.width;
+              const y = face.boundingBox.y * overlayDimensions.height;
+              const width = face.boundingBox.width * overlayDimensions.width;
+              const height = face.boundingBox.height * overlayDimensions.height;
+              const color = face.attributes.eyesOpen.detected ? "#10b981" : "#ef4444";
+              
+              // Position label above box, or below if too close to top edge
+              const labelHeight = 24;
+              const labelPadding = 4;
+              const labelAboveY = y - labelHeight - labelPadding;
+              const labelBelowY = y + height + labelPadding;
+              const labelY = labelAboveY < 0 ? labelBelowY : labelAboveY;
+              const textY = labelY + labelHeight / 2;
+              
+              return (
+                <g key={face.faceId}>
+                  {/* Bounding box rectangle */}
+                  <rect
+                    x={x}
+                    y={y}
+                    width={width}
+                    height={height}
+                    fill="none"
+                    stroke={color}
+                    strokeWidth="3"
+                    data-testid={`bbox-face-${photo.id}-${faceIdx}`}
+                  />
+                  
+                  {/* Face label - positioned above or below box to avoid clipping */}
+                  <g>
+                    {/* Label background */}
+                    <rect
+                      x={x}
+                      y={labelY}
+                      width={60}
+                      height={labelHeight}
+                      fill={color}
+                      rx="4"
+                    />
+                    {/* Label text */}
+                    <text
+                      x={x + 30}
+                      y={textY}
+                      fill="white"
+                      fontSize="16"
+                      fontWeight="bold"
+                      textAnchor="middle"
+                      dominantBaseline="middle"
+                    >
+                      Face {faceIdx + 1}
+                    </text>
+                  </g>
+                </g>
+              );
+            })}
           </svg>
         )}
       </div>

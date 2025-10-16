@@ -31,6 +31,54 @@ export class PhotoAnalysisService {
   }
 
   /**
+   * Quick face detection only (no full analysis) - for preview before analysis
+   */
+  async detectFaces(photoUrl: string, photoId: string): Promise<{
+    photoId: string;
+    faces: Array<{
+      boundingBox: { x: number; y: number; width: number; height: number };
+      confidence: number;
+    }>;
+  }> {
+    await this.loadModels();
+    
+    try {
+      const image = await loadImageFromUrl(photoUrl);
+      const canvas = createCanvas(image.width, image.height);
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(image, 0, 0);
+      
+      const tensor = tf.node.decodeImage(canvas.toBuffer('image/png'), 3);
+      
+      // Quick detection only - no landmarks or expressions
+      const detections = await faceapi.detectAllFaces(
+        tensor as any,
+        new faceapi.TinyFaceDetectorOptions({
+          inputSize: 608,
+          scoreThreshold: 0.4
+        })
+      );
+      
+      tensor.dispose();
+      
+      const faces = detections.map((detection) => ({
+        boundingBox: {
+          x: detection.box.x / canvas.width,
+          y: detection.box.y / canvas.height,
+          width: detection.box.width / canvas.width,
+          height: detection.box.height / canvas.height,
+        },
+        confidence: detection.score,
+      }));
+      
+      return { photoId, faces };
+    } catch (error) {
+      console.error(`Error detecting faces in ${photoId}:`, error);
+      return { photoId, faces: [] };
+    }
+  }
+
+  /**
    * Analyze a single photo using real computer vision
    */
   async analyzePhoto(photoUrl: string, photoId: string): Promise<PhotoAnalysisResult> {

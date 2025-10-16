@@ -176,6 +176,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Photo Analysis routes
+  
+  // Preview face detection (quick detection before full analysis)
+  app.post("/api/sessions/:sessionId/preview", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const session = await storage.getSession(req.params.sessionId);
+      
+      if (!session) {
+        return res.status(404).json({ message: "Session not found" });
+      }
+      
+      if (session.userId !== userId) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      const photos = await storage.getPhotosBySession(req.params.sessionId);
+      
+      if (photos.length === 0) {
+        return res.status(400).json({ message: "No photos to preview" });
+      }
+
+      // Quick face detection on all photos
+      const detectionResults = await Promise.all(
+        photos.map(photo => photoAnalysisService.detectFaces(photo.fileUrl, photo.id))
+      );
+
+      res.json({
+        sessionId: req.params.sessionId,
+        detections: detectionResults,
+      });
+    } catch (error) {
+      console.error("Error previewing faces:", error);
+      res.status(500).json({ message: "Failed to detect faces" });
+    }
+  });
+
   app.post("/api/sessions/:sessionId/analyze", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;

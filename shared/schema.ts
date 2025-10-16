@@ -79,6 +79,7 @@ export const faces = pgTable("faces", {
   expression: varchar("expression", { length: 50 }), // happy, neutral, sad, surprised
   headAngle: jsonb("head_angle"), // {pitch, yaw, roll}
   qualityScore: decimal("quality_score", { precision: 5, scale: 2 }),
+  excluded: boolean("excluded").default(false).notNull(), // user can exclude faces from analysis
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
