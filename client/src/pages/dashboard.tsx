@@ -109,12 +109,32 @@ export default function Dashboard() {
   };
 
   const handleGetUploadParameters = async (file: any) => {
-    const res = await apiRequest("POST", "/api/objects/upload", {});
-    const response = await res.json() as { uploadURL: string };
-    return {
-      method: "PUT" as const,
-      url: response.uploadURL,
-    };
+    try {
+      const res = await apiRequest("POST", "/api/objects/upload", {});
+      if (!res.ok) {
+        const errorText = await res.text();
+        console.error("❌ Failed to get upload URL:", {
+          status: res.status,
+          statusText: res.statusText,
+          error: errorText
+        });
+        throw new Error(`Failed to get upload URL: ${res.status} ${errorText}`);
+      }
+      const response = await res.json() as { uploadURL: string };
+      console.log("✅ Got upload URL for:", file.name);
+      return {
+        method: "PUT" as const,
+        url: response.uploadURL,
+      };
+    } catch (error) {
+      console.error("❌ Upload parameter error:", error);
+      toast({
+        title: "Upload Error",
+        description: error instanceof Error ? error.message : "Failed to prepare upload",
+        variant: "destructive",
+      });
+      throw error;
+    }
   };
 
   const handleUploadComplete = async (result: UploadResult<Record<string, unknown>, Record<string, unknown>>) => {
