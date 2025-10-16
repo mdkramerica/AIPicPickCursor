@@ -39,9 +39,15 @@ export class PhotoAnalysisService {
       // Load image from object storage
       const image = await loadImageFromUrl(photoUrl);
       
+      // Convert Image to Canvas for face-api compatibility
+      const { createCanvas } = await import('canvas');
+      const canvas = createCanvas(image.width, image.height);
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(image, 0, 0);
+      
       // Detect all faces with landmarks and expressions
       const detections = await faceapi
-        .detectAllFaces(image as any, new faceapi.TinyFaceDetectorOptions())
+        .detectAllFaces(canvas as any, new faceapi.TinyFaceDetectorOptions())
         .withFaceLandmarks()
         .withFaceExpressions();
 
