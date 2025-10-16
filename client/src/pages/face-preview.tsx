@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { ArrowLeft, Sparkles, Loader2, CheckCircle2, XCircle } from "lucide-react";
+import { ArrowLeft, Sparkles, Loader2, CheckCircle2, XCircle, AlertCircle } from "lucide-react";
 
 type DetectedFace = {
   boundingBox: { x: number; y: number; width: number; height: number };
@@ -321,7 +321,7 @@ function FacePreviewImage({
       {/* Face overlays */}
       {containerDimensions.width > 0 && (
         <svg
-          className="absolute top-0 left-0 pointer-events-none"
+          className="absolute top-0 left-0"
           style={{
             width: `${containerDimensions.width}px`,
             height: `${containerDimensions.height}px`,
@@ -348,7 +348,11 @@ function FacePreviewImage({
                   stroke={color}
                   strokeWidth="3"
                   className="pointer-events-auto cursor-pointer"
-                  onClick={() => onToggleFace(idx)}
+                  onClick={(e) => {
+                    console.log("🖱️ Face clicked:", idx, "for photo:", photo.id);
+                    e.stopPropagation();
+                    onToggleFace(idx);
+                  }}
                   data-testid={`face-toggle-${photo.id}-${idx}`}
                 />
 
@@ -359,7 +363,11 @@ function FacePreviewImage({
                   r="10"
                   fill={color}
                   className="pointer-events-auto cursor-pointer"
-                  onClick={() => onToggleFace(idx)}
+                  onClick={(e) => {
+                    console.log("🖱️ Face circle clicked:", idx, "for photo:", photo.id);
+                    e.stopPropagation();
+                    onToggleFace(idx);
+                  }}
                 />
                 {included ? (
                   <path
