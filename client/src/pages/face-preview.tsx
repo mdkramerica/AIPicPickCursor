@@ -43,6 +43,8 @@ export default function FacePreview() {
     queryKey: ["/api/sessions", sessionId, "photos"],
     enabled: !!sessionId,
   });
+  
+  console.log("📸 Photos from query:", photos?.map(p => ({ id: p.id, filename: p.originalFilename })));
 
   // Trigger face detection
   const detectFacesMutation = useMutation({
@@ -195,6 +197,12 @@ export default function FacePreview() {
           <div className="space-y-6">
             {photos.map((photo) => {
               const detection = detectionResults.detections?.find((d) => d.photoId === photo.id);
+              console.log("🔎 Photo matching:", {
+                photoId: photo.id,
+                detectionPhotoIds: detectionResults.detections.map(d => d.photoId),
+                foundMatch: !!detection,
+                faceCount: detection?.faces.length || 0
+              });
               if (!detection || detection.faces.length === 0) return null;
 
               return (
