@@ -1,0 +1,162 @@
+import { Sparkles, Eye, Smile, Zap, CheckCircle } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+
+export default function Landing() {
+  return (
+    <div className="min-h-screen bg-background">
+      {/* Header */}
+      <header className="border-b">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Sparkles className="h-6 w-6 text-primary" />
+            <span className="text-xl font-semibold">AI Photo Selector</span>
+          </div>
+          <Button asChild data-testid="button-login">
+            <a href="/api/login">Sign In</a>
+          </Button>
+        </div>
+      </header>
+
+      {/* Hero Section */}
+      <section className="relative overflow-hidden py-20 sm:py-32">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center">
+            <h1 className="text-4xl sm:text-6xl font-bold tracking-tight mb-6">
+              Find Your Perfect
+              <span className="block text-primary mt-2">Group Photo with AI</span>
+            </h1>
+            <p className="text-xl text-muted-foreground max-w-3xl mx-auto mb-10">
+              No more scrolling through dozens of shots. Our AI analyzes faces, detects open eyes and smiles, 
+              then recommends the best photo from your group shots—instantly.
+            </p>
+            <Button size="lg" asChild className="text-lg px-8 py-6" data-testid="button-get-started">
+              <a href="/api/login">
+                <Sparkles className="mr-2 h-5 w-5" />
+                Get Started Free
+              </a>
+            </Button>
+          </div>
+        </div>
+      </section>
+
+      {/* Features Section */}
+      <section className="py-20 bg-card/30">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <h2 className="text-3xl font-bold text-center mb-12">How It Works</h2>
+          <div className="grid md:grid-cols-3 gap-8">
+            <Card className="p-6">
+              <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center mb-4">
+                <Eye className="h-6 w-6 text-primary" />
+              </div>
+              <h3 className="text-xl font-semibold mb-2">Eye Detection</h3>
+              <p className="text-muted-foreground">
+                Advanced AI detects if everyone's eyes are open in each photo, ensuring no one is caught mid-blink.
+              </p>
+            </Card>
+
+            <Card className="p-6">
+              <div className="h-12 w-12 rounded-xl bg-chart-2/10 flex items-center justify-center mb-4">
+                <Smile className="h-6 w-6 text-chart-2" />
+              </div>
+              <h3 className="text-xl font-semibold mb-2">Smile Analysis</h3>
+              <p className="text-muted-foreground">
+                Our technology identifies genuine smiles and expressions, finding photos where everyone looks their best.
+              </p>
+            </Card>
+
+            <Card className="p-6">
+              <div className="h-12 w-12 rounded-xl bg-chart-3/10 flex items-center justify-center mb-4">
+                <Zap className="h-6 w-6 text-chart-3" />
+              </div>
+              <h3 className="text-xl font-semibold mb-2">Instant Results</h3>
+              <p className="text-muted-foreground">
+                Get quality scores and recommendations in seconds. Download or share your best photo right away.
+              </p>
+            </Card>
+          </div>
+        </div>
+      </section>
+
+      {/* Benefits Section */}
+      <section className="py-20">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="grid md:grid-cols-2 gap-12 items-center">
+            <div>
+              <h2 className="text-3xl font-bold mb-6">Why Choose AI Photo Selector?</h2>
+              <ul className="space-y-4">
+                <li className="flex items-start gap-3">
+                  <CheckCircle className="h-6 w-6 text-chart-2 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <h4 className="font-semibold mb-1">Save Time</h4>
+                    <p className="text-muted-foreground">No more manual comparison. AI analyzes all photos in seconds.</p>
+                  </div>
+                </li>
+                <li className="flex items-start gap-3">
+                  <CheckCircle className="h-6 w-6 text-chart-2 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <h4 className="font-semibold mb-1">Never Miss Perfect Moments</h4>
+                    <p className="text-muted-foreground">Catch details the human eye might miss—like subtle expressions or perfect timing.</p>
+                  </div>
+                </li>
+                <li className="flex items-start gap-3">
+                  <CheckCircle className="h-6 w-6 text-chart-2 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <h4 className="font-semibold mb-1">Smart & Secure</h4>
+                    <p className="text-muted-foreground">Your photos are processed securely and privately. We respect your privacy.</p>
+                  </div>
+                </li>
+                <li className="flex items-start gap-3">
+                  <CheckCircle className="h-6 w-6 text-chart-2 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <h4 className="font-semibold mb-1">Session-Based</h4>
+                    <p className="text-muted-foreground">Upload, analyze, and download. No permanent storage unless you want it.</p>
+                  </div>
+                </li>
+              </ul>
+            </div>
+            <div className="relative">
+              <div className="aspect-square rounded-2xl bg-gradient-to-br from-primary/20 via-chart-2/20 to-chart-3/20 p-8 flex items-center justify-center">
+                <div className="text-center">
+                  <Sparkles className="h-20 w-20 text-primary mx-auto mb-4" />
+                  <p className="text-2xl font-semibold">Intelligent Analysis</p>
+                  <p className="text-muted-foreground mt-2">Powered by advanced AI</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* CTA Section */}
+      <section className="py-20 bg-primary text-primary-foreground">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+          <h2 className="text-3xl sm:text-4xl font-bold mb-4">
+            Ready to Find Your Best Photo?
+          </h2>
+          <p className="text-lg mb-8 opacity-90">
+            Join thousands who've discovered the perfect group photo using AI
+          </p>
+          <Button 
+            size="lg" 
+            variant="secondary" 
+            asChild 
+            className="text-lg px-8 py-6"
+            data-testid="button-cta-login"
+          >
+            <a href="/api/login">
+              Start Analyzing Photos
+            </a>
+          </Button>
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer className="border-t py-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center text-muted-foreground">
+          <p>&copy; 2024 AI Photo Selector. Find your perfect group photo.</p>
+        </div>
+      </footer>
+    </div>
+  );
+}
