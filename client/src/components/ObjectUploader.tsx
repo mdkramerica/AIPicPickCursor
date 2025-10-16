@@ -1,6 +1,6 @@
 // Reference: blueprint:javascript_object_storage
-import { useState } from "react";
-import type { ReactNode } from "react";
+import { useState, useRef } from "react";
+import type { ReactNode, ChangeEvent } from "react";
 import Uppy from "@uppy/core";
 import { DashboardModal } from "@uppy/react";
 import AwsS3 from "@uppy/aws-s3";
@@ -30,6 +30,7 @@ export function ObjectUploader({
   children,
 }: ObjectUploaderProps) {
   const [showModal, setShowModal] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [uppy] = useState(() =>
     new Uppy({
       restrictions: {
@@ -39,7 +40,6 @@ export function ObjectUploader({
       },
       autoProceed: false,
       meta: {
-        // This helps with mobile photo gallery access
         type: 'photo'
       },
     })
@@ -59,9 +59,55 @@ export function ObjectUploader({
     uppy.cancelAll();
   };
 
+  // Safari iOS-compatible file selection
+  const handleNativeFileInput = (event: ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
+
+    // Add files to Uppy
+    Array.from(files).forEach((file) => {
+      try {
+        uppy.addFile({
+          source: 'file input',
+          name: file.name,
+          type: file.type,
+          data: file,
+        });
+      } catch (err) {
+        console.error('Error adding file:', err);
+      }
+    });
+
+    // Open Uppy modal after files are selected
+    setShowModal(true);
+    
+    // Reset input so same files can be selected again
+    event.target.value = '';
+  };
+
+  // For Safari iOS: use label to trigger native file input
+  const handleButtonClick = () => {
+    fileInputRef.current?.click();
+  };
+
   return (
     <div>
-      <Button onClick={() => setShowModal(true)} className={buttonClassName} data-testid="button-upload-photos">
+      {/* Native file input for Safari iOS compatibility */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        multiple={maxNumberOfFiles > 1}
+        onChange={handleNativeFileInput}
+        style={{ display: 'none' }}
+        data-testid="input-file-native"
+      />
+      
+      <Button 
+        onClick={handleButtonClick} 
+        className={buttonClassName} 
+        data-testid="button-upload-photos"
+      >
         {children}
       </Button>
 
@@ -71,7 +117,7 @@ export function ObjectUploader({
           open={true}
           onRequestClose={handleCloseModal}
           proudlyDisplayPoweredByUppy={false}
-          note="Select photos from your gallery or take new ones"
+          note="Review and upload your selected photos"
           browserBackButtonClose={true}
         />
       )}
