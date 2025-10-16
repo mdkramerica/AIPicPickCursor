@@ -50,10 +50,18 @@ export default function FacePreview() {
   const detectFacesMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", `/api/sessions/${sessionId}/preview`, {});
+      if (!res.ok) {
+        const errorText = await res.text();
+        console.error("❌ Detection API failed:", res.status, errorText);
+        throw new Error(`Detection failed: ${res.status}`);
+      }
       const data = await res.json();
       console.log("🔍 Face detection API response:", data);
       return data;
     },
+    onError: (error) => {
+      console.error("❌ Detection mutation error:", error);
+    }
   });
 
   const detectionResults = detectFacesMutation.data as { detections: FaceDetectionResult[] } | undefined;
@@ -203,8 +211,12 @@ export default function FacePreview() {
                 foundMatch: !!detection,
                 faceCount: detection?.faces.length || 0
               });
-              if (!detection || detection.faces.length === 0) return null;
+              if (!detection || detection.faces.length === 0) {
+                console.log("⏭️ Skipping photo (no detection or no faces):", photo.id);
+                return null;
+              }
 
+              console.log("🎨 Rendering Card for photo:", photo.id, detection.faces.length, "faces");
               return (
                 <Card key={photo.id} className="overflow-hidden" data-testid={`card-photo-preview-${photo.id}`}>
                   <div className="p-4">
@@ -281,8 +293,15 @@ function FacePreviewImage({
         className="w-full h-auto"
         onLoad={(e) => {
           const img = e.currentTarget;
+          console.log("✅ Image loaded:", photo.fileUrl, {
+            natural: { w: img.naturalWidth, h: img.naturalHeight },
+            client: { w: img.clientWidth, h: img.clientHeight }
+          });
           setImageDimensions({ width: img.naturalWidth, height: img.naturalHeight });
           setContainerDimensions({ width: img.clientWidth, height: img.clientHeight });
+        }}
+        onError={(e) => {
+          console.error("❌ Image failed to load:", photo.fileUrl, e);
         }}
         data-testid={`img-preview-${photo.id}`}
       />
