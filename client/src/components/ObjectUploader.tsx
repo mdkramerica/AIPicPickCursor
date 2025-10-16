@@ -38,7 +38,7 @@ export function ObjectUploader({
         maxFileSize,
         allowedFileTypes: ['image/*'],
       },
-      autoProceed: false,
+      autoProceed: true, // Auto-upload when files are added!
       meta: {
         type: 'photo'
       },
