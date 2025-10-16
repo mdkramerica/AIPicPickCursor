@@ -168,6 +168,15 @@ export default function Dashboard() {
   const currentSession = sessions?.find(s => s.id === selectedSession);
   const canAnalyze = currentSession && currentSession.status === "uploading" && (photos?.length || 0) >= 2;
 
+  // Debug logging
+  console.log('Dashboard Debug:', {
+    selectedSession,
+    currentSession,
+    photosLength: photos?.length,
+    canAnalyze,
+    sessionStatus: currentSession?.status
+  });
+
   return (
     <div className="min-h-screen bg-background pb-20 sm:pb-8">
       {/* Mobile-Optimized Header */}
@@ -178,6 +187,21 @@ export default function Dashboard() {
             <span className="text-base sm:text-xl font-semibold">AI Photo Selector</span>
           </div>
           <div className="flex items-center gap-1 sm:gap-4">
+            {selectedSession && canAnalyze && (
+              <Button 
+                onClick={() => analyzeSessionMutation.mutate(selectedSession)}
+                disabled={analyzeSessionMutation.isPending}
+                data-testid="button-analyze-session-header"
+                className="hidden sm:flex min-h-[44px]"
+              >
+                {analyzeSessionMutation.isPending ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Sparkles className="mr-2 h-4 w-4" />
+                )}
+                Analyze Photos
+              </Button>
+            )}
             {user && user.profileImageUrl && (
               <img 
                 src={user.profileImageUrl} 
