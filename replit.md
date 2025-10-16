@@ -73,3 +73,23 @@ Preferred communication style: Simple, everyday language.
 - **Vite**: Build tool for development and production.
 - **Drizzle Kit**: Database migration tool.
 - **ESBuild**: Bundles server code for production.
+
+## Recent Changes (October 16, 2025)
+
+### Face Selection & Exclusion Feature ✅ (Latest)
+1. **Face Preview Page**: Interactive preview at `/session/:sessionId/preview` showing all detected faces before analysis
+2. **Face Toggle Controls**: Click any face to include/exclude it from analysis with visual feedback:
+   - Green checkmark = included in analysis
+   - Gray X = excluded from analysis
+3. **Smart Quality Calculation**: Analysis automatically recalculates quality scores based only on selected faces
+4. **Face Detection API**: Quick detection endpoint `/api/sessions/:sessionId/preview` for preview without full analysis
+5. **Face Labeling**: Numbered labels on comparison page with smart positioning (flips below box when near top edge)
+6. **Updated Analysis Flow**: Dashboard → Upload → "Select Faces & Analyze" → Preview/Toggle Faces → Analyze → View Results
+
+### Technical Implementation
+- Created `/session/:sessionId/preview` route with FacePreviewImage component
+- Face detection uses lightweight `detectFaces()` method (no landmarks/expressions for speed)
+- Analysis endpoint accepts optional `faceSelections` parameter
+- Quality scoring recalculates based on included faces only
+- Client-side navigation uses wouter for smooth transitions
+- Mobile-friendly 44px touch targets for face toggles
