@@ -109,7 +109,7 @@ export default function FacePreview() {
     }));
   };
 
-  const totalFaces = detectionResults?.detections.reduce((sum, result) => sum + result.faces.length, 0) || 0;
+  const totalFaces = detectionResults?.detections?.reduce((sum, result) => sum + result.faces.length, 0) || 0;
   const selectedFaces = Object.values(faceSelections).reduce(
     (sum, photoFaces) => sum + Object.values(photoFaces).filter(Boolean).length,
     0
