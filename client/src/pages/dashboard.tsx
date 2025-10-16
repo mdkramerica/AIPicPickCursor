@@ -290,21 +290,25 @@ export default function Dashboard() {
           <div className="mt-8">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-2xl font-bold">Session Photos</h2>
-              {canAnalyze && (
-                <Button 
-                  onClick={() => analyzeSessionMutation.mutate(selectedSession)}
-                  disabled={analyzeSessionMutation.isPending}
-                  data-testid="button-analyze-session"
-                >
-                  {analyzeSessionMutation.isPending ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <Sparkles className="mr-2 h-4 w-4" />
-                  )}
-                  Analyze Photos
-                </Button>
-              )}
+              <Button 
+                onClick={() => analyzeSessionMutation.mutate(selectedSession)}
+                disabled={!canAnalyze || analyzeSessionMutation.isPending}
+                data-testid="button-analyze-session"
+              >
+                {analyzeSessionMutation.isPending ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Sparkles className="mr-2 h-4 w-4" />
+                )}
+                Analyze Photos
+              </Button>
             </div>
+            
+            {!canAnalyze && photos && photos.length > 0 && photos.length < 2 && (
+              <div className="mb-4 p-4 bg-muted rounded-lg text-sm text-muted-foreground text-center">
+                Upload at least 2 photos to start analysis
+              </div>
+            )}
 
             {photosLoading ? (
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
