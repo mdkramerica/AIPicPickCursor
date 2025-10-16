@@ -38,6 +38,10 @@ export function ObjectUploader({
         allowedFileTypes: ['image/*'],
       },
       autoProceed: false,
+      meta: {
+        // This helps with mobile photo gallery access
+        type: 'photo'
+      },
     })
       .use(AwsS3, {
         shouldUseMultipart: false,
@@ -67,6 +71,8 @@ export function ObjectUploader({
           open={true}
           onRequestClose={handleCloseModal}
           proudlyDisplayPoweredByUppy={false}
+          note="Select photos from your gallery or take new ones"
+          browserBackButtonClose={true}
         />
       )}
     </div>
