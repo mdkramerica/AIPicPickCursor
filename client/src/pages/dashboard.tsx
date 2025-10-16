@@ -144,7 +144,10 @@ export default function Dashboard() {
   };
 
   const handleUploadComplete = async (result: UploadResult<Record<string, unknown>, Record<string, unknown>>) => {
+    console.log("📦 Upload complete callback triggered", result);
+    
     if (!result.successful || result.successful.length === 0) {
+      console.error("❌ No successful uploads");
       toast({
         title: "Error",
         description: "No files were successfully uploaded",
@@ -153,11 +156,13 @@ export default function Dashboard() {
       return;
     }
 
+    console.log("✅ Processing", result.successful.length, "uploaded files");
     const uploadedFiles = result.successful.map(file => ({
       url: file.uploadURL as string,
       filename: file.name || "unknown",
     }));
     
+    console.log("💾 Saving photos to database:", uploadedFiles);
     uploadPhotosMutation.mutate(uploadedFiles);
   };
 
