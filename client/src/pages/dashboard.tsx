@@ -177,8 +177,47 @@ export default function Dashboard() {
     sessionStatus: currentSession?.status
   });
 
+  // Debug panel toggle
+  const [showDebug, setShowDebug] = useState(false);
+
   return (
     <div className="min-h-screen bg-background pb-20 sm:pb-8">
+      {/* Mobile-Friendly Debug Panel */}
+      {showDebug && selectedSession && (
+        <div className="fixed bottom-20 sm:bottom-4 right-3 sm:right-4 bg-black text-white p-3 rounded-lg shadow-lg text-xs font-mono max-w-xs z-50">
+          <div className="flex items-center justify-between mb-2">
+            <span className="font-bold">Debug Info</span>
+            <button onClick={() => setShowDebug(false)} className="text-white hover:text-gray-300">✕</button>
+          </div>
+          <div className="space-y-1">
+            <div>Session: {selectedSession.slice(0, 8)}...</div>
+            <div>Photos: {photos?.length || 0}</div>
+            <div>Status: {currentSession?.status || 'none'}</div>
+            <div className={canAnalyze ? 'text-green-400' : 'text-red-400'}>
+              Can Analyze: {canAnalyze ? '✓ YES' : '✗ NO'}
+            </div>
+            {!canAnalyze && (
+              <div className="mt-2 text-yellow-300 text-xs">
+                {!currentSession ? '• No session' : 
+                 currentSession.status !== 'uploading' ? `• Status not uploading (${currentSession.status})` :
+                 (photos?.length || 0) < 2 ? `• Need 2+ photos (have ${photos?.length || 0})` :
+                 '• Unknown issue'}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Debug Toggle Button */}
+      {selectedSession && (
+        <button
+          onClick={() => setShowDebug(!showDebug)}
+          className="fixed bottom-24 sm:bottom-8 right-3 sm:right-4 bg-gray-800 text-white px-3 py-2 rounded-full shadow-lg text-xs font-mono z-50 hover:bg-gray-700"
+          data-testid="button-toggle-debug"
+        >
+          🐛 Debug
+        </button>
+      )}
       {/* Mobile-Optimized Header */}
       <header className="border-b sticky top-0 bg-background z-50">
         <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 h-14 sm:h-16 flex items-center justify-between gap-2">
