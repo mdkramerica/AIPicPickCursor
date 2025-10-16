@@ -102,11 +102,43 @@ export default function Dashboard() {
     },
   });
 
-  // Navigate to face preview page
+  // Navigate to results
   const [, navigate] = useLocation();
-  const goToFacePreview = (sessionId: string) => {
-    navigate(`/session/${sessionId}/preview`);
-  };
+
+  // Analyze session mutation (bypass face selection)
+  const analyzeSessionMutation = useMutation({
+    mutationFn: async (sessionId: string) => {
+      const res = await apiRequest("POST", `/api/sessions/${sessionId}/analyze`, {});
+      return await res.json();
+    },
+    onSuccess: (_, sessionId) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/sessions", sessionId, "photos"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sessions"] });
+      toast({
+        title: "Analysis Complete",
+        description: "Your photos have been analyzed!",
+      });
+      navigate(`/session/${sessionId}/compare`);
+    },
+    onError: (error: Error) => {
+      if (isUnauthorizedError(error)) {
+        toast({
+          title: "Unauthorized",
+          description: "You are logged out. Logging in again...",
+          variant: "destructive",
+        });
+        setTimeout(() => {
+          window.location.href = "/api/login";
+        }, 500);
+        return;
+      }
+      toast({
+        title: "Error",
+        description: "Failed to analyze photos",
+        variant: "destructive",
+      });
+    },
+  });
 
   const handleGetUploadParameters = async (file: any) => {
     try {
@@ -227,12 +259,17 @@ export default function Dashboard() {
           <div className="flex items-center gap-1 sm:gap-4">
             {selectedSession && canAnalyze && (
               <Button 
-                onClick={() => goToFacePreview(selectedSession)}
+                onClick={() => analyzeSessionMutation.mutate(selectedSession)}
+                disabled={analyzeSessionMutation.isPending}
                 data-testid="button-analyze-session-header"
                 className="hidden sm:flex min-h-[44px]"
               >
-                <Sparkles className="mr-2 h-4 w-4" />
-                Select Faces & Analyze
+                {analyzeSessionMutation.isPending ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Sparkles className="mr-2 h-4 w-4" />
+                )}
+                {analyzeSessionMutation.isPending ? 'Analyzing...' : 'Analyze Photos'}
               </Button>
             )}
             {user && user.profileImageUrl && (
@@ -360,13 +397,17 @@ export default function Dashboard() {
                 )}
                 {/* Desktop Analyze Button */}
                 <Button 
-                  onClick={() => goToFacePreview(selectedSession)}
-                  disabled={!canAnalyze}
+                  onClick={() => analyzeSessionMutation.mutate(selectedSession)}
+                  disabled={!canAnalyze || analyzeSessionMutation.isPending}
                   data-testid="button-analyze-session"
                   className="hidden sm:flex"
                 >
-                  <Sparkles className="mr-2 h-4 w-4" />
-                  Select Faces & Analyze
+                  {analyzeSessionMutation.isPending ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Sparkles className="mr-2 h-4 w-4" />
+                  )}
+                  {analyzeSessionMutation.isPending ? 'Analyzing...' : 'Analyze Photos'}
                 </Button>
               </div>
             </div>
@@ -451,13 +492,17 @@ export default function Dashboard() {
             </Button>
           ) : (
             <Button 
-              onClick={() => goToFacePreview(selectedSession)}
-              disabled={!canAnalyze}
+              onClick={() => analyzeSessionMutation.mutate(selectedSession)}
+              disabled={!canAnalyze || analyzeSessionMutation.isPending}
               data-testid="button-analyze-session-mobile"
               className="w-full min-h-[52px] text-base"
             >
-              <Sparkles className="mr-2 h-5 w-5" />
-              Select Faces & Analyze
+              {analyzeSessionMutation.isPending ? (
+                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+              ) : (
+                <Sparkles className="mr-2 h-5 w-5" />
+              )}
+              {analyzeSessionMutation.isPending ? 'Analyzing...' : 'Analyze Photos'}
             </Button>
           )}
         </div>

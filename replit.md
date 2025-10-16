@@ -76,20 +76,21 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes (October 16, 2025)
 
-### Face Selection & Exclusion Feature ✅ (Latest)
-1. **Face Preview Page**: Interactive preview at `/session/:sessionId/preview` showing all detected faces before analysis
-2. **Face Toggle Controls**: Click any face to include/exclude it from analysis with visual feedback:
-   - Green checkmark = included in analysis
-   - Gray X = excluded from analysis
-3. **Smart Quality Calculation**: Analysis automatically recalculates quality scores based only on selected faces
-4. **Face Detection API**: Quick detection endpoint `/api/sessions/:sessionId/preview` for preview without full analysis
-5. **Face Labeling**: Numbered labels on comparison page with smart positioning (flips below box when near top edge)
-6. **Updated Analysis Flow**: Dashboard → Upload → "Select Faces & Analyze" → Preview/Toggle Faces → Analyze → View Results
+### Deployment Dependencies Added ✅ (Latest)
+- Added required Nix packages for TensorFlow.js and node-canvas deployment support:
+  - cairo, pango, pixman, freetype, fontconfig, libjpeg, libpng, giflib, librsvg, zlib
+- These native dependencies are required for @tensorflow/tfjs-node and canvas to work in production
+- **Note**: Manual fix still required - Remove duplicate port configuration in `.replit` file (port 41501→3000) before publishing
 
-### Technical Implementation
-- Created `/session/:sessionId/preview` route with FacePreviewImage component
-- Face detection uses lightweight `detectFaces()` method (no landmarks/expressions for speed)
-- Analysis endpoint accepts optional `faceSelections` parameter
-- Quality scoring recalculates based on included faces only
-- Client-side navigation uses wouter for smooth transitions
-- Mobile-friendly 44px touch targets for face toggles
+### Simplified Analysis Workflow ✅
+1. **Bypassed Face Selection**: Removed face preview/selection step to simplify user flow
+2. **Direct Analysis**: Users now go directly from upload to analysis with one click
+3. **Analysis Flow**: Dashboard → Upload Photos → "Analyze Photos" → View Results
+4. **All Faces Analyzed**: Analysis now automatically processes all detected faces (no manual selection needed)
+
+### Technical Changes
+- Removed `/session/:sessionId/preview` route and FacePreview component from App.tsx
+- Updated dashboard to call analyze endpoint directly without face selections
+- Analysis endpoint's `faceSelections` parameter remains optional (defaults to analyzing all faces)
+- Added analyze mutation with loading states and success/error handling
+- Button text changed from "Select Faces & Analyze" to "Analyze Photos"
