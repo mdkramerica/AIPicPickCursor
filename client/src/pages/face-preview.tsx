@@ -48,11 +48,21 @@ export default function FacePreview() {
   const detectFacesMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", `/api/sessions/${sessionId}/preview`, {});
-      return res;
+      const data = await res.json();
+      console.log("🔍 Face detection API response:", data);
+      return data;
     },
   });
 
   const detectionResults = detectFacesMutation.data as { detections: FaceDetectionResult[] } | undefined;
+  
+  console.log("📊 Detection state:", {
+    isPending: detectFacesMutation.isPending,
+    isError: detectFacesMutation.isError,
+    hasData: !!detectFacesMutation.data,
+    detectionResults,
+    photosCount: photos?.length,
+  });
 
   // Initialize face selections (all faces included by default)
   useEffect(() => {
