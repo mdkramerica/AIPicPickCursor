@@ -97,12 +97,12 @@ export default function Comparison() {
                 data-testid={`card-photo-${index}`}
               >
                 <div className="relative">
-                  {/* Photo */}
-                  <div className="relative bg-muted">
+                  {/* Photo with bounding boxes */}
+                  <div className="relative bg-muted aspect-[4/3]">
                     <img
                       src={photo.fileUrl}
                       alt={photo.originalFilename}
-                      className="w-full h-64 object-cover"
+                      className="w-full h-full object-contain"
                       data-testid={`img-photo-${index}`}
                     />
                     
@@ -110,7 +110,7 @@ export default function Comparison() {
                     <svg
                       className="absolute inset-0 w-full h-full pointer-events-none"
                       viewBox="0 0 100 100"
-                      preserveAspectRatio="none"
+                      preserveAspectRatio="xMidYMid meet"
                     >
                       {faces.map((face, faceIdx) => (
                         <rect
@@ -121,7 +121,7 @@ export default function Comparison() {
                           height={face.boundingBox.height * 100}
                           fill="none"
                           stroke={face.attributes.eyesOpen.detected ? "#10b981" : "#ef4444"}
-                          strokeWidth="1"
+                          strokeWidth="2"
                           data-testid={`bbox-face-${index}-${faceIdx}`}
                         />
                       ))}
