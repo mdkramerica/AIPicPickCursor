@@ -55,7 +55,7 @@ export class PhotoAnalysisService {
         tensor as any,
         new faceapi.TinyFaceDetectorOptions({
           inputSize: 608,
-          scoreThreshold: 0.4
+          scoreThreshold: 0.3
         })
       );
       
@@ -102,7 +102,7 @@ export class PhotoAnalysisService {
       const detections = await faceapi
         .detectAllFaces(tensor as any, new faceapi.TinyFaceDetectorOptions({
           inputSize: 608,        // 416 (default) → 608 (better for small faces)
-          scoreThreshold: 0.4    // 0.5 (default) → 0.4 (slightly lower threshold)
+          scoreThreshold: 0.3    // 0.5 (default) → 0.3 (more aggressive detection)
         }))
         .withFaceLandmarks()
         .withFaceExpressions();
