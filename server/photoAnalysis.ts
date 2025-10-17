@@ -392,8 +392,8 @@ export class PhotoAnalysisService {
     // Eye Aspect Ratio (EAR)
     const ear = (vertical1 + vertical2) / (2.0 * horizontal);
     
-    // Threshold: eyes are open if EAR > 0.20 (more lenient to reduce false negatives)
-    return ear > 0.20;
+    // Threshold: eyes are open if EAR > 0.18 (very lenient to minimize false negatives)
+    return ear > 0.18;
   }
 
   /**

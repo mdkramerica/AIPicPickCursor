@@ -133,7 +133,8 @@ Preferred communication style: Simple, everyday language.
   - Started at 0.20 (too lenient - false positives)
   - Increased to 0.25 (too strict - false negatives)
   - Tried 0.22 (still had false negatives on some open eyes)
-  - **Current: 0.20** (more lenient to reduce false negatives while maintaining reasonable accuracy)
+  - Tried 0.20 (still missing some open eyes)
+  - **Current: 0.18** (very lenient to minimize false negatives)
 
 ### Deployment Dependencies Added ✅
 - Added required Nix packages for TensorFlow.js and node-canvas deployment support:
