@@ -76,7 +76,17 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes (October 17, 2025)
 
-### Landmark Scaling Bug Fix 🔧 (Latest)
+### Null Quality Score Frontend Fix 🔧 (Latest)
+- **Issue**: Comparison page crashed with "null is not an object (evaluating 'face.qualityScore.toFixed')" error
+- **Root Cause**: Previous failed analyses (from landmark scaling bug) stored null qualityScore values in database
+- **Fix**: Added defensive null checks in comparison.tsx:
+  - Updated TypeScript types to allow `qualityScore: number | null`
+  - Display 'N/A' when qualityScore is null
+  - Fixed photo sorting to handle null values (defaults to 0)
+- **Impact**: Comparison page now handles legacy data gracefully without crashing
+- **Action Required**: Re-analyze photos to populate proper quality scores
+
+### Landmark Scaling Bug Fix 🔧
 - **Issue**: Multi-scale detection was failing with "a.mul is not a function" error, causing all photos to score 0
 - **Root Cause**: FaceLandmarks68 constructor expects Point objects with TensorFlow operations, but was receiving plain objects
 - **Fix**: Changed landmark scaling to use `new faceapi.Point(x, y)` instead of plain `{ x, y }` objects
