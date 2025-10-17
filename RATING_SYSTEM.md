@@ -133,9 +133,25 @@ The system tracks three types of issues:
 
 ## Best Photo Selection
 
-The photo with the **highest overall quality score** is selected as the winner.
+The selection algorithm uses a **two-tier priority system**:
 
-**Tie-breaking:** If multiple photos have identical scores, the first one analyzed wins.
+### Priority 1: Maximum Eyes Open Count
+The photo with the **most people with eyes open** is selected first.
+
+### Priority 2: Quality Score Tiebreaker
+If multiple photos have the same eyes open count, the one with the **highest overall quality score** wins.
+- Smiling count (40% of quality score)
+- Average face quality (20% of quality score)
+
+### Example
+Given these photos:
+- **Photo A:** 3/4 eyes open, quality score 90
+- **Photo B:** 4/4 eyes open, quality score 75
+- **Photo C:** 4/4 eyes open, quality score 80
+
+**Winner: Photo C** (4/4 eyes open with highest quality score among tied photos)
+
+This ensures the selected photo prioritizes everyone looking at the camera with eyes open, then optimizes for smiles and overall quality.
 
 ## Face Detection Limitations
 

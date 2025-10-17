@@ -367,13 +367,35 @@ export class PhotoAnalysisService {
       }
     }
 
-    // Find best photo (highest quality score)
+    // Find best photo - prioritize eyes open first, then smiles + face quality
     let bestPhotoId: string | null = null;
-    let bestScore = 0;
+    let bestEyesOpenCount = -1;
+    let bestTiebreakerScore = 0;
 
     for (const analysis of analyses) {
-      if (analysis.overallQualityScore > bestScore) {
-        bestScore = analysis.overallQualityScore;
+      const eyesOpenCount = analysis.faces.filter(f => f.attributes.eyesOpen.detected).length;
+      
+      // Calculate tiebreaker score (smiles + face quality only, excludes eyes open)
+      const smilingCount = analysis.faces.filter(f => f.attributes.smile.detected).length;
+      const avgFaceQuality = analysis.faces.length > 0
+        ? analysis.faces.reduce((sum, f) => sum + f.qualityScore, 0) / analysis.faces.length
+        : 0;
+      
+      const smilingScore = analysis.faces.length > 0 
+        ? (smilingCount / analysis.faces.length) * 40 
+        : 0;
+      const faceQualityScore = (avgFaceQuality / 100) * 20;
+      const tiebreakerScore = smilingScore + faceQualityScore;
+      
+      // Priority 1: Maximum eyes open count
+      if (eyesOpenCount > bestEyesOpenCount) {
+        bestEyesOpenCount = eyesOpenCount;
+        bestTiebreakerScore = tiebreakerScore;
+        bestPhotoId = analysis.photoId;
+      } 
+      // Priority 2: If same eyes open count, use smiles + face quality as tiebreaker
+      else if (eyesOpenCount === bestEyesOpenCount && tiebreakerScore > bestTiebreakerScore) {
+        bestTiebreakerScore = tiebreakerScore;
         bestPhotoId = analysis.photoId;
       }
     }

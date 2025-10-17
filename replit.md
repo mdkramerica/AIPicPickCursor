@@ -1,7 +1,7 @@
 # AI Group Photo Selector
 
 ## Overview
-The AI Group Photo Selector is an intelligent web application designed to simplify the process of choosing the best group photo. It leverages AI-powered computer vision to analyze multiple photos from the same scene, identifying the optimal shot by detecting open eyes, smiles, and overall face quality. The primary purpose is to eliminate manual photo review, offering users an instant recommendation for the picture where everyone looks their best.
+The AI Group Photo Selector is an intelligent web application designed to simplify the process of choosing the best group photo. It leverages AI-powered computer vision to analyze multiple photos from the same scene, identifying the optimal shot by detecting open eyes, smiles, and overall face quality. The primary purpose is to eliminate manual photo review, offering users an instant recommendation for the picture where everyone looks their best. Photo selection prioritizes eyes open count first, then uses smiles and face quality as tiebreakers.
 
 ## User Preferences
 Preferred communication style: Simple, everyday language.
@@ -76,7 +76,13 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes (October 17, 2025)
 
-### Share All Photos + Rating Documentation ✅ (Latest)
+### Photo Selection Algorithm Update ✅ (Latest)
+- **Eyes-First Priority**: Algorithm now prioritizes photos with maximum eyes open count
+- **Smart Tiebreaking**: When multiple photos have same eyes open, uses quality score (smiles + face quality)
+- **Example**: Photo with 4/4 eyes open and 2/4 smiling beats photo with 3/4 eyes open and 4/4 smiling
+- Updated RATING_SYSTEM.md with two-tier priority system documentation
+
+### Share All Photos + Rating Documentation ✅
 1. **Share Buttons on All Photos**: Users can now share any photo, not just the AI-selected best one
    - All photos in comparison view have a share button
    - Best photo has filled button, others have outline variant
