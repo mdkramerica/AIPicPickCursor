@@ -132,7 +132,8 @@ Preferred communication style: Simple, everyday language.
 - Adjusted Eye Aspect Ratio (EAR) threshold multiple times for optimal accuracy:
   - Started at 0.20 (too lenient - false positives)
   - Increased to 0.25 (too strict - false negatives)
-  - Settled on 0.22 (balanced - minimal false positives and negatives)
+  - Tried 0.22 (still had false negatives on some open eyes)
+  - **Current: 0.20** (more lenient to reduce false negatives while maintaining reasonable accuracy)
 
 ### Deployment Dependencies Added ✅
 - Added required Nix packages for TensorFlow.js and node-canvas deployment support:
