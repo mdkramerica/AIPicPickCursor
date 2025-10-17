@@ -137,6 +137,11 @@ export class PhotoAnalysisService {
             },
           };
           
+          // Debug: Verify expressions are preserved
+          if (withLandmarksAndExpressions && !scaledDetection.expressions) {
+            console.error(`⚠️ Expressions lost during scaling! Original had expressions: ${!!detection.expressions}`);
+          }
+          
           // Scale landmarks if present - properly scale each point back to original size
           if (detection.landmarks) {
             const scaledPoints = detection.landmarks.positions.map((point: faceapi.Point) => 
@@ -238,6 +243,15 @@ export class PhotoAnalysisService {
         const landmarks = detection.landmarks;
         const expressions = detection.expressions;
         const box = detection.detection.box;
+        
+        // Debug: Check if expressions exist
+        if (!expressions) {
+          console.error(`⚠️ Face ${index} has no expressions object!`, {
+            hasDetection: !!detection.detection,
+            hasLandmarks: !!detection.landmarks,
+            detectionKeys: Object.keys(detection),
+          });
+        }
         
         // Extract eye landmarks
         const leftEye = landmarks.getLeftEye();
