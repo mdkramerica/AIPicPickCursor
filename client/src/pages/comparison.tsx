@@ -425,18 +425,17 @@ export default function Comparison() {
                     </div>
                   )}
 
-                  {/* Share button - only for winner */}
-                  {photo.isSelectedBest && (
-                    <Button
-                      onClick={() => sharePhoto(photo.fileUrl, photo.originalFilename)}
-                      disabled={isSharing}
-                      className="w-full mt-3"
-                      data-testid="button-share-winner"
-                    >
-                      <Share2 className="w-4 h-4 mr-2" />
-                      {isSharing ? "Sharing..." : "Share Best Photo"}
-                    </Button>
-                  )}
+                  {/* Share button - available for all photos */}
+                  <Button
+                    onClick={() => sharePhoto(photo.fileUrl, photo.originalFilename)}
+                    disabled={isSharing}
+                    variant={photo.isSelectedBest ? "default" : "outline"}
+                    className="w-full mt-3"
+                    data-testid={`button-share-${index}`}
+                  >
+                    <Share2 className="w-4 h-4 mr-2" />
+                    {isSharing ? "Sharing..." : "Share Photo"}
+                  </Button>
                 </div>
               </Card>
             );
@@ -450,7 +449,7 @@ export default function Comparison() {
             <div className="space-y-2">
               <h3 className="font-semibold">About Face Detection</h3>
               <p className="text-sm text-muted-foreground">
-                The AI uses TinyFaceDetector optimized for CPU processing. Some faces might not be detected if they are:
+                The AI uses SSD MobileNet v1 for accurate face detection. Some faces might not be detected if they are:
               </p>
               <ul className="text-sm text-muted-foreground list-disc list-inside space-y-1">
                 <li>Too small (faces should be at least 80x80 pixels)</li>

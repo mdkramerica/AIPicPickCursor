@@ -74,9 +74,33 @@ Preferred communication style: Simple, everyday language.
 - **Drizzle Kit**: Database migration tool.
 - **ESBuild**: Bundles server code for production.
 
-## Recent Changes (October 16, 2025)
+## Recent Changes (October 17, 2025)
 
-### Deployment Dependencies Added ✅ (Latest)
+### Share All Photos + Rating Documentation ✅ (Latest)
+1. **Share Buttons on All Photos**: Users can now share any photo, not just the AI-selected best one
+   - All photos in comparison view have a share button
+   - Best photo has filled button, others have outline variant
+   - Uses native iOS/Android share sheet via Web Share API
+2. **Rating System Documentation**: Created `RATING_SYSTEM.md` comprehensive guide
+   - Documents face detection algorithm (SSD MobileNet v1)
+   - Explains eye openness detection (EAR algorithm, threshold 0.22)
+   - Details smile detection and expression analysis
+   - Shows scoring formulas and recommendation levels
+   - Technical implementation details and version history
+
+### Face Detection Model Upgrade ✅
+- **Switched from Tiny Face Detector to SSD MobileNet v1**
+- Reason: Much better accuracy for group photos (detected only 1 face in 12-person photo with old model)
+- Trade-off: ~2-3x slower analysis, but dramatically improved face detection
+- Configuration: minConfidence: 0.5 (50% threshold)
+
+### Eye Detection Threshold Tuning ✅
+- Adjusted Eye Aspect Ratio (EAR) threshold multiple times for optimal accuracy:
+  - Started at 0.20 (too lenient - false positives)
+  - Increased to 0.25 (too strict - false negatives)
+  - Settled on 0.22 (balanced - minimal false positives and negatives)
+
+### Deployment Dependencies Added ✅
 - Added required Nix packages for TensorFlow.js and node-canvas deployment support:
   - cairo, pango, pixman, freetype, fontconfig, libjpeg, libpng, giflib, librsvg, zlib
 - These native dependencies are required for @tensorflow/tfjs-node and canvas to work in production
