@@ -137,12 +137,16 @@ export class PhotoAnalysisService {
             }
           };
           
-          // Scale landmarks if present
+          // Scale landmarks if present - properly scale each point back to original size
           if (detection.landmarks) {
-            scaledDetection.landmarks = detection.landmarks.shiftBy(
-              detection.detection.box.x * ((1 / scale) - 1),
-              detection.detection.box.y * ((1 / scale) - 1)
-            );
+            const scaledPoints = detection.landmarks.positions.map((point: faceapi.Point) => ({
+              x: point.x / scale,
+              y: point.y / scale,
+            }));
+            scaledDetection.landmarks = new faceapi.FaceLandmarks68(scaledPoints, {
+              width: canvas.width,
+              height: canvas.height,
+            });
           }
           
           return scaledDetection;
