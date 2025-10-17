@@ -49,8 +49,8 @@ export class PhotoAnalysisService {
   /**
    * Remove duplicate face detections based on IoU threshold
    */
-  private removeDuplicateFaces(detections: faceapi.WithFaceDetection<{}>[]): faceapi.WithFaceDetection<{}>[] {
-    const uniqueDetections: faceapi.WithFaceDetection<{}>[] = [];
+  private removeDuplicateFaces(detections: any[]): any[] {
+    const uniqueDetections: any[] = [];
     const IoU_THRESHOLD = 0.5; // Faces with >50% overlap are considered duplicates
     
     for (const detection of detections) {
@@ -136,11 +136,6 @@ export class PhotoAnalysisService {
               box: scaledBox,
             },
           };
-          
-          // Debug: Verify expressions are preserved
-          if (withLandmarksAndExpressions && !scaledDetection.expressions) {
-            console.error(`⚠️ Expressions lost during scaling! Original had expressions: ${!!detection.expressions}`);
-          }
           
           // Scale landmarks if present - properly scale each point back to original size
           if (detection.landmarks) {
@@ -243,15 +238,6 @@ export class PhotoAnalysisService {
         const landmarks = detection.landmarks;
         const expressions = detection.expressions;
         const box = detection.detection.box;
-        
-        // Debug: Check if expressions exist
-        if (!expressions) {
-          console.error(`⚠️ Face ${index} has no expressions object!`, {
-            hasDetection: !!detection.detection,
-            hasLandmarks: !!detection.landmarks,
-            detectionKeys: Object.keys(detection),
-          });
-        }
         
         // Extract eye landmarks
         const leftEye = landmarks.getLeftEye();
