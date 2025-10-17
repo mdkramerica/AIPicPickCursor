@@ -139,10 +139,9 @@ export class PhotoAnalysisService {
           
           // Scale landmarks if present - properly scale each point back to original size
           if (detection.landmarks) {
-            const scaledPoints = detection.landmarks.positions.map((point: faceapi.Point) => ({
-              x: point.x / scale,
-              y: point.y / scale,
-            }));
+            const scaledPoints = detection.landmarks.positions.map((point: faceapi.Point) => 
+              new faceapi.Point(point.x / scale, point.y / scale)
+            );
             scaledDetection.landmarks = new faceapi.FaceLandmarks68(scaledPoints, {
               width: canvas.width,
               height: canvas.height,

@@ -76,7 +76,13 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes (October 17, 2025)
 
-### Multi-Scale Face Detection ✅ (Latest)
+### Landmark Scaling Bug Fix 🔧 (Latest)
+- **Issue**: Multi-scale detection was failing with "a.mul is not a function" error, causing all photos to score 0
+- **Root Cause**: FaceLandmarks68 constructor expects Point objects with TensorFlow operations, but was receiving plain objects
+- **Fix**: Changed landmark scaling to use `new faceapi.Point(x, y)` instead of plain `{ x, y }` objects
+- **Impact**: Multi-scale face detection now works correctly, analysis completes successfully
+
+### Multi-Scale Face Detection ✅
 - **Enhanced Detection Coverage**: Implemented multi-scale face detection at 100%, 75%, and 50% scales
 - **Comprehensive Face Discovery**: Catches faces of all sizes - large faces, small/distant faces, and medium faces
 - **Duplicate Removal**: Uses IoU (Intersection over Union) threshold of 0.5 to merge duplicate detections
