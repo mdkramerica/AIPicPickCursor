@@ -134,7 +134,9 @@ Preferred communication style: Simple, everyday language.
   - Increased to 0.25 (too strict - false negatives)
   - Tried 0.22 (still had false negatives on some open eyes)
   - Tried 0.20 (still missing some open eyes)
-  - **Current: 0.18** (very lenient to minimize false negatives)
+  - Tried 0.18 (still detecting open eyes as closed)
+  - **Current: 0.15** (very lenient to minimize false negatives)
+- Added debug logging to output actual EAR values for each eye to fine-tune threshold
 
 ### Deployment Dependencies Added ✅
 - Added required Nix packages for TensorFlow.js and node-canvas deployment support:

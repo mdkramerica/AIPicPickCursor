@@ -257,8 +257,8 @@ export class PhotoAnalysisService {
         const mouth = landmarks.getMouth();
         
         // Calculate if eyes are open based on eye aspect ratio (EAR)
-        const leftEyeOpen = this.calculateEyeOpenness(leftEye);
-        const rightEyeOpen = this.calculateEyeOpenness(rightEye);
+        const leftEyeOpen = this.calculateEyeOpenness(leftEye, `Face ${index} Left Eye`);
+        const rightEyeOpen = this.calculateEyeOpenness(rightEye, `Face ${index} Right Eye`);
         const eyesOpen = leftEyeOpen && rightEyeOpen;
         
         // Debug check if expressions exists
@@ -379,7 +379,7 @@ export class PhotoAnalysisService {
   /**
    * Calculate eye openness using Eye Aspect Ratio (EAR)
    */
-  private calculateEyeOpenness(eyePoints: faceapi.Point[]): boolean {
+  private calculateEyeOpenness(eyePoints: faceapi.Point[], eyeLabel: string = ''): boolean {
     if (eyePoints.length < 6) return true; // Default to open if not enough points
     
     // Calculate vertical distances
@@ -392,8 +392,12 @@ export class PhotoAnalysisService {
     // Eye Aspect Ratio (EAR)
     const ear = (vertical1 + vertical2) / (2.0 * horizontal);
     
-    // Threshold: eyes are open if EAR > 0.18 (very lenient to minimize false negatives)
-    return ear > 0.18;
+    // Debug logging to see actual EAR values
+    const isOpen = ear > 0.15;
+    console.log(`👁️  ${eyeLabel} EAR: ${ear.toFixed(3)} -> ${isOpen ? 'OPEN' : 'CLOSED'}`);
+    
+    // Threshold: eyes are open if EAR > 0.15 (very lenient to minimize false negatives)
+    return isOpen;
   }
 
   /**
