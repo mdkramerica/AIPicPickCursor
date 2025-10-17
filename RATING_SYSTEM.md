@@ -11,6 +11,23 @@ The AI Group Photo Selector uses a sophisticated multi-factor scoring system to 
 - Better accuracy for group photos compared to lightweight models
 - ~2-3x slower than Tiny Face Detector, but significantly more accurate
 
+### Multi-Scale Detection
+To ensure comprehensive face coverage, the system uses **multi-scale detection**:
+
+**How it works:**
+1. Analyzes each photo at three different scales: 100%, 75%, and 50%
+2. Detects faces at each scale independently
+3. Scales bounding boxes back to original size
+4. Removes duplicate detections using IoU (Intersection over Union) threshold of 0.5
+5. Keeps the detection with highest confidence when duplicates are found
+
+**Why multi-scale?**
+- **Large faces** are best detected at smaller scales (50%)
+- **Small/distant faces** are best detected at full scale (100%)
+- **Medium faces** benefit from intermediate scale (75%)
+
+This approach catches faces of all sizes, significantly improving detection coverage in group photos where people may be at different distances from the camera.
+
 ## Individual Face Analysis
 
 Each detected face is analyzed for three key attributes:

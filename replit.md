@@ -76,7 +76,14 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes (October 17, 2025)
 
-### Photo Selection Algorithm Update ✅ (Latest)
+### Multi-Scale Face Detection ✅ (Latest)
+- **Enhanced Detection Coverage**: Implemented multi-scale face detection at 100%, 75%, and 50% scales
+- **Comprehensive Face Discovery**: Catches faces of all sizes - large faces, small/distant faces, and medium faces
+- **Duplicate Removal**: Uses IoU (Intersection over Union) threshold of 0.5 to merge duplicate detections
+- **Better Group Photos**: Significantly improved detection for photos with people at varying distances
+- ~3x processing time, but ensures all faces are discovered for accurate "best photo" selection
+
+### Photo Selection Algorithm Update ✅
 - **Eyes-First Priority**: Algorithm now prioritizes photos with maximum eyes open count
 - **Smart Tiebreaking**: When multiple photos have same eyes open, uses quality score (smiles + face quality)
 - **Example**: Photo with 4/4 eyes open and 2/4 smiling beats photo with 3/4 eyes open and 4/4 smiling
