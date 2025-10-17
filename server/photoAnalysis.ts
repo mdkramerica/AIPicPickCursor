@@ -176,27 +176,17 @@ export class PhotoAnalysisService {
       const ctx = canvas.getContext('2d');
       ctx.drawImage(image, 0, 0);
       
-      const tensor = tf.node.decodeImage(canvas.toBuffer('image/png'), 3);
-      
-      // Quick detection only - no landmarks or expressions
-      // Using SSD MobileNet for better accuracy in group photos
-      const detections = await faceapi.detectAllFaces(
-        tensor as any,
-        new faceapi.SsdMobilenetv1Options({
-          minConfidence: 0.5
-        })
-      );
-      
-      tensor.dispose();
+      // Use multi-scale detection for comprehensive face coverage
+      const detections = await this.multiScaleDetection(canvas, false);
       
       const faces = detections.map((detection) => ({
         boundingBox: {
-          x: detection.box.x / canvas.width,
-          y: detection.box.y / canvas.height,
-          width: detection.box.width / canvas.width,
-          height: detection.box.height / canvas.height,
+          x: detection.detection.box.x / canvas.width,
+          y: detection.detection.box.y / canvas.height,
+          width: detection.detection.box.width / canvas.width,
+          height: detection.detection.box.height / canvas.height,
         },
-        confidence: detection.score,
+        confidence: detection.detection.score,
       }));
       
       return { photoId, faces };
@@ -221,21 +211,9 @@ export class PhotoAnalysisService {
       const ctx = canvas.getContext('2d');
       ctx.drawImage(image, 0, 0);
       
-      // Convert canvas to TensorFlow tensor for face-api in Node.js
-      const tensor = tf.node.decodeImage(canvas.toBuffer('image/png'), 3);
-      
-      // Detect all faces with landmarks and expressions
-      // Using SSD MobileNet v1 for superior accuracy in group photos
-      // Trade-off: ~2-3x slower than Tiny detector, but much more accurate for multiple faces
-      const detections = await faceapi
-        .detectAllFaces(tensor as any, new faceapi.SsdMobilenetv1Options({
-          minConfidence: 0.5     // Confidence threshold (0-1, default 0.5)
-        }))
-        .withFaceLandmarks()
-        .withFaceExpressions();
-      
-      // Clean up tensor
-      tensor.dispose();
+      // Use multi-scale detection with landmarks and expressions for comprehensive analysis
+      // Detects faces at 100%, 75%, and 50% scales to catch faces of all sizes
+      const detections = await this.multiScaleDetection(canvas, true);
 
       if (detections.length === 0) {
         // No faces detected - return low quality
