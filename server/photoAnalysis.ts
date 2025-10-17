@@ -128,13 +128,13 @@ export class PhotoAnalysisService {
             height: detection.detection.box.height / scale,
           });
           
-          // Create new detection with scaled box
-          const scaledDetection = {
-            ...detection,
+          // Create new detection with scaled box, preserving all properties
+          const scaledDetection: any = {
+            ...detection, // Preserve all properties including expressions
             detection: {
               ...detection.detection,
               box: scaledBox,
-            }
+            },
           };
           
           // Scale landmarks if present - properly scale each point back to original size

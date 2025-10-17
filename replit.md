@@ -76,7 +76,13 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes (October 17, 2025)
 
-### Null Quality Score Frontend Fix 🔧 (Latest)
+### Expressions Lost During Multi-Scale Detection Bug Fix 🔧 (Latest)
+- **Issue**: Quality scores showing as NaN/null, all faces rated as "N/A" despite analysis completing
+- **Root Cause**: When scaling detections back to original size, expressions were not preserved in the detection object
+- **Fix**: Restored spread operator `...detection` to preserve all properties including expressions during multi-scale detection
+- **Impact**: Quality scores now calculate correctly, face ratings populate properly
+
+### Null Quality Score Frontend Fix 🔧
 - **Issue**: Comparison page crashed with "null is not an object (evaluating 'face.qualityScore.toFixed')" error
 - **Root Cause**: Previous failed analyses (from landmark scaling bug) stored null qualityScore values in database
 - **Fix**: Added defensive null checks in comparison.tsx:
@@ -84,7 +90,6 @@ Preferred communication style: Simple, everyday language.
   - Display 'N/A' when qualityScore is null
   - Fixed photo sorting to handle null values (defaults to 0)
 - **Impact**: Comparison page now handles legacy data gracefully without crashing
-- **Action Required**: Re-analyze photos to populate proper quality scores
 
 ### Landmark Scaling Bug Fix 🔧
 - **Issue**: Multi-scale detection was failing with "a.mul is not a function" error, causing all photos to score 0
