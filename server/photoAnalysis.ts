@@ -32,6 +32,133 @@ export class PhotoAnalysisService {
   }
 
   /**
+   * Calculate Intersection over Union (IoU) between two bounding boxes
+   */
+  private calculateIoU(box1: faceapi.Box, box2: faceapi.Box): number {
+    const x1 = Math.max(box1.x, box2.x);
+    const y1 = Math.max(box1.y, box2.y);
+    const x2 = Math.min(box1.x + box1.width, box2.x + box2.width);
+    const y2 = Math.min(box1.y + box1.height, box2.y + box2.height);
+    
+    const intersection = Math.max(0, x2 - x1) * Math.max(0, y2 - y1);
+    const union = box1.width * box1.height + box2.width * box2.height - intersection;
+    
+    return union > 0 ? intersection / union : 0;
+  }
+
+  /**
+   * Remove duplicate face detections based on IoU threshold
+   */
+  private removeDuplicateFaces(detections: faceapi.WithFaceDetection<{}>[]): faceapi.WithFaceDetection<{}>[] {
+    const uniqueDetections: faceapi.WithFaceDetection<{}>[] = [];
+    const IoU_THRESHOLD = 0.5; // Faces with >50% overlap are considered duplicates
+    
+    for (const detection of detections) {
+      let isDuplicate = false;
+      
+      for (const uniqueDetection of uniqueDetections) {
+        const iou = this.calculateIoU(detection.detection.box, uniqueDetection.detection.box);
+        if (iou > IoU_THRESHOLD) {
+          isDuplicate = true;
+          // Keep the detection with higher confidence
+          if (detection.detection.score > uniqueDetection.detection.score) {
+            const index = uniqueDetections.indexOf(uniqueDetection);
+            uniqueDetections[index] = detection;
+          }
+          break;
+        }
+      }
+      
+      if (!isDuplicate) {
+        uniqueDetections.push(detection);
+      }
+    }
+    
+    return uniqueDetections;
+  }
+
+  /**
+   * Multi-scale face detection for better coverage
+   * Detects faces at multiple image scales to catch faces of all sizes
+   */
+  private async multiScaleDetection(
+    canvas: any,
+    withLandmarksAndExpressions: boolean = false
+  ): Promise<any[]> {
+    const scales = [1.0, 0.75, 0.5]; // 100%, 75%, 50%
+    const allDetections: any[] = [];
+    
+    for (const scale of scales) {
+      const scaledWidth = Math.floor(canvas.width * scale);
+      const scaledHeight = Math.floor(canvas.height * scale);
+      
+      // Create scaled canvas
+      const scaledCanvas = createCanvas(scaledWidth, scaledHeight);
+      const scaledCtx = scaledCanvas.getContext('2d');
+      scaledCtx.drawImage(canvas, 0, 0, scaledWidth, scaledHeight);
+      
+      // Convert to tensor
+      const tensor = tf.node.decodeImage(scaledCanvas.toBuffer('image/png'), 3);
+      
+      try {
+        let detections;
+        
+        if (withLandmarksAndExpressions) {
+          detections = await faceapi
+            .detectAllFaces(tensor as any, new faceapi.SsdMobilenetv1Options({
+              minConfidence: 0.5
+            }))
+            .withFaceLandmarks()
+            .withFaceExpressions();
+        } else {
+          detections = await faceapi.detectAllFaces(
+            tensor as any,
+            new faceapi.SsdMobilenetv1Options({
+              minConfidence: 0.5
+            })
+          );
+        }
+        
+        // Scale bounding boxes back to original size
+        const scaledDetections = detections.map((detection: any) => {
+          const scaledBox = new faceapi.Box({
+            x: detection.detection.box.x / scale,
+            y: detection.detection.box.y / scale,
+            width: detection.detection.box.width / scale,
+            height: detection.detection.box.height / scale,
+          });
+          
+          // Create new detection with scaled box
+          const scaledDetection = {
+            ...detection,
+            detection: {
+              ...detection.detection,
+              box: scaledBox,
+            }
+          };
+          
+          // Scale landmarks if present
+          if (detection.landmarks) {
+            scaledDetection.landmarks = detection.landmarks.shiftBy(
+              detection.detection.box.x * ((1 / scale) - 1),
+              detection.detection.box.y * ((1 / scale) - 1)
+            );
+          }
+          
+          return scaledDetection;
+        });
+        
+        allDetections.push(...scaledDetections);
+      } finally {
+        tensor.dispose();
+      }
+    }
+    
+    // Remove duplicate detections
+    return this.removeDuplicateFaces(allDetections);
+  }
+
+  /**
    * Quick face detection only (no full analysis) - for preview before analysis
    */
   async detectFaces(photoUrl: string, photoId: string): Promise<{
