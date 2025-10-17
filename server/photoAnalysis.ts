@@ -120,7 +120,18 @@ export class PhotoAnalysisService {
         }
         
         // Scale bounding boxes back to original size
-        const scaledDetections = detections.map((detection: any) => {
+        const scaledDetections = detections.map((detection: any, idx: number) => {
+          // Debug: check detection structure
+          if (idx === 0 && scale === 1.0) {
+            console.log('🔍 Detection structure:', {
+              hasDetection: !!detection.detection,
+              detectionKeys: detection.detection ? Object.keys(detection.detection) : [],
+              detectionScore: detection.detection?.score,
+              detectionBoxScore: detection.detection?.box?.score,
+              topLevelKeys: Object.keys(detection),
+            });
+          }
+          
           const scaledBox = new faceapi.Box({
             x: detection.detection.box.x / scale,
             y: detection.detection.box.y / scale,
@@ -134,6 +145,7 @@ export class PhotoAnalysisService {
             detection: {
               ...detection.detection,
               box: scaledBox,
+              score: detection.detection.score, // Explicitly preserve score
             },
           };
           
