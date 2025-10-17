@@ -45,6 +45,14 @@ export async function loadImageFromUrl(url: string): Promise<Image> {
 
     // Load image with canvas
     const image = await loadImage(buffer);
+    
+    // Validate minimum image dimensions for face detection
+    // SSD MobileNet v1 requires faces to be at least 80x80 pixels
+    const MIN_IMAGE_SIZE = 100; // Minimum 100x100 pixels for reliable detection
+    if (image.width < MIN_IMAGE_SIZE || image.height < MIN_IMAGE_SIZE) {
+      throw new Error(`Image too small for face detection. Minimum size: ${MIN_IMAGE_SIZE}x${MIN_IMAGE_SIZE} pixels. Actual: ${image.width}x${image.height}`);
+    }
+    
     return image;
   } catch (error) {
     console.error('Error loading image from', url, ':', error);
