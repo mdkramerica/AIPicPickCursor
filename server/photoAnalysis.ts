@@ -18,12 +18,13 @@ export class PhotoAnalysisService {
     try {
       const modelPath = path.join(process.cwd(), 'models');
       
-      await faceapi.nets.tinyFaceDetector.loadFromDisk(modelPath);
+      // Use SSD MobileNet for better face detection in group photos
+      await faceapi.nets.ssdMobilenetv1.loadFromDisk(modelPath);
       await faceapi.nets.faceLandmark68Net.loadFromDisk(modelPath);
       await faceapi.nets.faceExpressionNet.loadFromDisk(modelPath);
       
       this.modelsLoaded = true;
-      console.log('✅ Face-API models loaded successfully');
+      console.log('✅ Face-API models loaded successfully (SSD MobileNet)');
     } catch (error) {
       console.error('❌ Failed to load Face-API models:', error);
       throw error;
@@ -51,11 +52,11 @@ export class PhotoAnalysisService {
       const tensor = tf.node.decodeImage(canvas.toBuffer('image/png'), 3);
       
       // Quick detection only - no landmarks or expressions
+      // Using SSD MobileNet for better accuracy in group photos
       const detections = await faceapi.detectAllFaces(
         tensor as any,
-        new faceapi.TinyFaceDetectorOptions({
-          inputSize: 608,
-          scoreThreshold: 0.3
+        new faceapi.SsdMobilenetv1Options({
+          minConfidence: 0.5
         })
       );
       
@@ -97,12 +98,11 @@ export class PhotoAnalysisService {
       const tensor = tf.node.decodeImage(canvas.toBuffer('image/png'), 3);
       
       // Detect all faces with landmarks and expressions
-      // Increased inputSize from 416 (default) to 608 for better small face detection
-      // Trade-off: ~50% slower but detects faces 30-40% smaller
+      // Using SSD MobileNet v1 for superior accuracy in group photos
+      // Trade-off: ~2-3x slower than Tiny detector, but much more accurate for multiple faces
       const detections = await faceapi
-        .detectAllFaces(tensor as any, new faceapi.TinyFaceDetectorOptions({
-          inputSize: 608,        // 416 (default) → 608 (better for small faces)
-          scoreThreshold: 0.3    // 0.5 (default) → 0.3 (more aggressive detection)
+        .detectAllFaces(tensor as any, new faceapi.SsdMobilenetv1Options({
+          minConfidence: 0.5     // Confidence threshold (0-1, default 0.5)
         }))
         .withFaceLandmarks()
         .withFaceExpressions();
