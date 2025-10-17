@@ -249,20 +249,40 @@ export class PhotoAnalysisService {
         const rightEyeOpen = this.calculateEyeOpenness(rightEye);
         const eyesOpen = leftEyeOpen && rightEyeOpen;
         
+        // Debug check if expressions exists
+        if (!expressions) {
+          console.error(`❌ Face ${index}: expressions is undefined!`, {
+            hasDetection: !!detection.detection,
+            hasLandmarks: !!detection.landmarks,
+            detectionKeys: Object.keys(detection),
+          });
+        }
+        
         // Detect smile from expressions (happy emotion)
-        const smileDetected = expressions.happy > 0.5;
-        const smileIntensity = expressions.happy;
+        const smileDetected = expressions ? expressions.happy > 0.5 : false;
+        const smileIntensity = expressions ? expressions.happy : 0;
         
         // Determine dominant expression
-        const expressionEntries = Object.entries(expressions) as [string, number][];
-        const dominantExpression = expressionEntries.reduce((a, b) => a[1] > b[1] ? a : b)[0];
+        const expressionEntries = expressions ? Object.entries(expressions) as [string, number][] : [];
+        const dominantExpression = expressionEntries.length > 0 
+          ? expressionEntries.reduce((a, b) => a[1] > b[1] ? a : b)[0]
+          : 'neutral';
         
         // Calculate face quality score
         const eyeScore = eyesOpen ? 40 : 0;
         const smileScore = smileDetected ? 30 : 0;
-        const expressionScore = (expressions.happy + expressions.neutral) * 15;
+        const expressionScore = expressions ? (expressions.happy + expressions.neutral) * 15 : 0;
         const detectionScore = detection.detection.score * 15;
         const qualityScore = Math.min(100, eyeScore + smileScore + expressionScore + detectionScore);
+        
+        console.log(`Face ${index} quality calc:`, {
+          eyeScore,
+          smileScore,
+          expressionScore,
+          detectionScore,
+          finalScore: qualityScore,
+          hasExpressions: !!expressions,
+        });
         
         // Normalize bounding box to 0-1 range
         const imgWidth = canvas.width;
