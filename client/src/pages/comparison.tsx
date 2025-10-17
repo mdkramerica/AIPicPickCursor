@@ -23,9 +23,9 @@ type Photo = {
         smile: { detected: boolean; intensity: number };
         expression: string;
       };
-      qualityScore: number;
+      qualityScore: number | null;
     }>;
-    overallQualityScore: number;
+    overallQualityScore: number | null;
     issues: {
       closedEyes: number;
       poorExpressions: number;
@@ -149,9 +149,11 @@ export default function Comparison() {
       const faces = photo.analysisData?.faces || [];
       return faces.length > 0; // Only show photos with detected faces
     })
-    .sort((a, b) => 
-      parseFloat(b.qualityScore) - parseFloat(a.qualityScore)
-    );
+    .sort((a, b) => {
+      const scoreA = parseFloat(a.qualityScore) || 0;
+      const scoreB = parseFloat(b.qualityScore) || 0;
+      return scoreB - scoreA;
+    });
 
   // Component for photo with properly aligned bounding boxes
   const PhotoWithBoundingBoxes = ({ 
@@ -418,7 +420,7 @@ export default function Comparison() {
                         <div key={face.faceId} className="flex items-center justify-between text-xs">
                           <span className="text-muted-foreground">Face {faceIdx + 1}</span>
                           <span className="font-medium" data-testid={`text-face-quality-${index}-${faceIdx}`}>
-                            {face.qualityScore.toFixed(1)}
+                            {face.qualityScore != null ? face.qualityScore.toFixed(1) : 'N/A'}
                           </span>
                         </div>
                       ))}
