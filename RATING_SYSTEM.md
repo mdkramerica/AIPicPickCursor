@@ -40,9 +40,10 @@ The algorithm calculates the ratio of vertical to horizontal eye distances:
 - Measures one horizontal distance (corner to corner)
 - Computes EAR = (vertical1 + vertical2) / (2.0 × horizontal)
 
-**Threshold:** EAR > 0.22
-- Eyes are considered "open" if EAR exceeds 0.22
-- Values below 0.22 indicate closed or squinting eyes
+**Threshold:** EAR > 0.15
+- Eyes are considered "open" if EAR exceeds 0.15
+- Values below 0.15 indicate closed or squinting eyes
+- Very lenient threshold to minimize false negatives (detecting open eyes as closed)
 
 **Scoring Impact:** 
 - Eyes open: +40 points (per face)
@@ -150,10 +151,18 @@ The system tracks three types of issues:
 
 ## Best Photo Selection
 
-The selection algorithm uses a **two-tier priority system**:
+The selection algorithm uses a **three-tier priority system**:
+
+### Priority 0: Face Count Consensus
+Only photos within **1 face** of the maximum detected face count are considered.
+
+**Why this matters:**
+- If one photo detected 8 faces and another detected only 3, the 3-face photo is excluded
+- Ensures we're selecting from photos that captured most/all people in the group
+- Prevents selecting a "perfect" photo of only half the group
 
 ### Priority 1: Maximum Eyes Open Count
-The photo with the **most people with eyes open** is selected first.
+From the consensus group, the photo with the **most people with eyes open** is selected.
 
 ### Priority 2: Quality Score Tiebreaker
 If multiple photos have the same eyes open count, the one with the **highest overall quality score** wins.
@@ -161,14 +170,18 @@ If multiple photos have the same eyes open count, the one with the **highest ove
 - Average face quality (20% of quality score)
 
 ### Example
-Given these photos:
-- **Photo A:** 3/4 eyes open, quality score 90
-- **Photo B:** 4/4 eyes open, quality score 75
-- **Photo C:** 4/4 eyes open, quality score 80
+Given these photos from a 6-person group:
+- **Photo A:** 6 faces detected, 5/6 eyes open, quality score 85
+- **Photo B:** 6 faces detected, 6/6 eyes open, quality score 75
+- **Photo C:** 6 faces detected, 6/6 eyes open, quality score 80
+- **Photo D:** 4 faces detected, 4/4 eyes open, quality score 95 ❌ *Excluded (not in consensus)*
 
-**Winner: Photo C** (4/4 eyes open with highest quality score among tied photos)
+**Winner: Photo C** (in consensus group, 6/6 eyes open with highest quality score)
 
-This ensures the selected photo prioritizes everyone looking at the camera with eyes open, then optimizes for smiles and overall quality.
+This ensures the selected photo:
+1. Includes everyone (or nearly everyone) in the group
+2. Prioritizes everyone looking at the camera with eyes open
+3. Optimizes for smiles and overall quality
 
 ## Face Detection Limitations
 
@@ -211,12 +224,14 @@ Select photo with highest overall score as "Best"
 
 ## Version History
 
-### Current Version (October 2025)
+### Current Version (October 18, 2025)
 - Face detection: SSD MobileNet v1 (minConfidence: 0.5)
-- Eye detection threshold: EAR > 0.22
-- Confidence threshold balanced for accuracy
+- Multi-scale detection: 100%, 75%, 50% scales
+- Eye detection threshold: EAR > 0.15 (very lenient to minimize false negatives)
+- Selection algorithm: Three-tier priority (face count consensus → eyes open → quality score)
 
 ### Previous Versions
+- **October 17, 2025:** Two-tier priority (eyes open → quality score), EAR threshold tuned from 0.22 → 0.15
 - Used Tiny Face Detector (less accurate for group photos)
-- Eye detection thresholds tested: 0.2, 0.25 (settled on 0.22)
+- Eye detection thresholds tested: 0.20, 0.25, 0.22, 0.18, 0.15 (settled on 0.15)
 - Face detection thresholds adjusted from 0.5 → 0.4 → 0.3 (now using SSD at 0.5)
