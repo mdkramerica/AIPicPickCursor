@@ -5,7 +5,7 @@
   "license": "MIT",
   "scripts": {
     "dev": "NODE_ENV=development tsx server/index.ts",
-    "build": "vite build && cp -r models dist/ && cp -r server dist/ && cp -r shared dist/ && cp vite.config.ts dist/",
+    "build": "vite build && cp -r server dist/ && cp -r shared dist/ && cp -r models dist/ && cp vite.config.ts dist/ && mv dist/public dist/server/public",
     "start": "NODE_ENV=production tsx dist/server/index.ts",
     "check": "tsc",
     "db:push": "drizzle-kit push"
