@@ -76,7 +76,19 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes (October 18, 2025)
 
-### Face Count Consensus Selection ✅ (Latest)
+### Album Feature ✅ (Latest)
+- **Best Photos Gallery**: New `/album` page displays best photo from each analyzed session
+- **Manual Selection Override**: Users can click any session to view all photos and select a different best photo
+- **Photo Management**: Delete individual photos from sessions with confirmation dialog
+- **Smart Behavior**: When best photo is deleted, session's bestPhotoId is cleared (left empty as requested)
+- **Date Sorting**: Album displays sessions sorted by creation date (newest first)
+- **Navigation**: Added "Album" link in Dashboard header, "Dashboard" link in Album header
+- **Backend APIs**: 
+  - GET /api/album: Returns sessions with best photos
+  - PATCH /api/photos/:id/mark-best: Update which photo is marked as best
+  - DELETE /api/photos/:id: Remove photo from session
+
+### Face Count Consensus Selection ✅
 - **Three-Tier Priority System**: Algorithm now uses face count consensus as Priority 0
 - **Consensus Filter**: Only considers photos within 1 face of maximum detected count
 - **Why It Matters**: Prevents selecting a "perfect" photo of only half the group
