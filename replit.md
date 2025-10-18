@@ -74,9 +74,17 @@ Preferred communication style: Simple, everyday language.
 - **Drizzle Kit**: Database migration tool.
 - **ESBuild**: Bundles server code for production.
 
-## Recent Changes (October 17, 2025)
+## Recent Changes (October 18, 2025)
 
-### Expressions Lost During Multi-Scale Detection Bug Fix 🔧 (Latest)
+### Face Count Consensus Selection ✅ (Latest)
+- **Three-Tier Priority System**: Algorithm now uses face count consensus as Priority 0
+- **Consensus Filter**: Only considers photos within 1 face of maximum detected count
+- **Why It Matters**: Prevents selecting a "perfect" photo of only half the group
+- **Example**: If max is 8 faces, photos with 7-8 faces are considered; 6 or fewer are excluded
+- **Selection Flow**: Face count consensus → Eyes open count → Quality score (smiles + face quality)
+- Updated RATING_SYSTEM.md with complete three-tier priority documentation
+
+### Expressions Lost During Multi-Scale Detection Bug Fix 🔧
 - **Issue**: Quality scores showing as NaN/null, all faces rated as "N/A" despite analysis completing
 - **Root Cause**: When scaling detections back to original size, expressions were not preserved in the detection object
 - **Fix**: Restored spread operator `...detection` to preserve all properties including expressions during multi-scale detection
