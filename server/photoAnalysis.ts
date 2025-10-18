@@ -522,12 +522,29 @@ export class PhotoAnalysisService {
       }
     }
 
-    // Find best photo - prioritize eyes open first, then smiles + face quality
+    // Three-tier priority system for selecting best photo:
+    // Priority 0: Face count consensus (only consider photos within 1 face of max detected)
+    // Priority 1: Maximum eyes open count
+    // Priority 2: Quality score tiebreaker (smiles + face quality)
+    
+    // First, find the maximum number of faces detected across all photos
+    const maxFaceCount = Math.max(...analyses.map(a => a.faces.length), 0);
+    
+    // Filter to only photos within 1 face of the maximum (consensus group)
+    // This ensures we're selecting from photos that captured most/all people
+    const consensusPhotos = analyses.filter(a => a.faces.length >= maxFaceCount - 1);
+    
+    console.log(`📊 Face count consensus: max=${maxFaceCount}, considering ${consensusPhotos.length}/${analyses.length} photos`);
+    consensusPhotos.forEach(p => {
+      console.log(`  - Photo ${p.photoId}: ${p.faces.length} faces detected`);
+    });
+    
     let bestPhotoId: string | null = null;
     let bestEyesOpenCount = -1;
     let bestTiebreakerScore = 0;
 
-    for (const analysis of analyses) {
+    // Now apply eyes open and quality score priorities within consensus group
+    for (const analysis of consensusPhotos) {
       const eyesOpenCount = analysis.faces.filter(f => f.attributes.eyesOpen.detected).length;
       
       // Calculate tiebreaker score (smiles + face quality only, excludes eyes open)
@@ -542,7 +559,7 @@ export class PhotoAnalysisService {
       const faceQualityScore = (avgFaceQuality / 100) * 20;
       const tiebreakerScore = smilingScore + faceQualityScore;
       
-      // Priority 1: Maximum eyes open count
+      // Priority 1: Maximum eyes open count (within consensus group)
       if (eyesOpenCount > bestEyesOpenCount) {
         bestEyesOpenCount = eyesOpenCount;
         bestTiebreakerScore = tiebreakerScore;
