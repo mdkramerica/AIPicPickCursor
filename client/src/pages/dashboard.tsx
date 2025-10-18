@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useLocation } from "wouter";
-import { Sparkles, Upload, LogOut, Eye, Smile, Loader2, Image as ImageIcon, Download } from "lucide-react";
+import { useLocation, Link } from "wouter";
+import { Sparkles, Upload, LogOut, Eye, Smile, Loader2, Image as ImageIcon, Download, Images } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardContent, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -257,6 +257,12 @@ export default function Dashboard() {
             <span className="text-base sm:text-xl font-semibold">AI Photo Selector</span>
           </div>
           <div className="flex items-center gap-1 sm:gap-4">
+            <Button variant="ghost" size="sm" asChild data-testid="button-album" className="min-h-[44px]">
+              <Link href="/album">
+                <Images className="h-4 w-4" />
+                <span className="hidden sm:inline ml-2">Album</span>
+              </Link>
+            </Button>
             {selectedSession && canAnalyze && (
               <Button 
                 onClick={() => analyzeSessionMutation.mutate(selectedSession)}

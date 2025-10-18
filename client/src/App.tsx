@@ -9,6 +9,7 @@ import NotFound from "@/pages/not-found";
 import Landing from "@/pages/landing";
 import Dashboard from "@/pages/dashboard";
 import Comparison from "@/pages/comparison";
+import Album from "@/pages/album";
 
 function Router() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -29,6 +30,7 @@ function Router() {
       ) : (
         <>
           <Route path="/" component={Dashboard} />
+          <Route path="/album" component={Album} />
           <Route path="/session/:sessionId/compare" component={Comparison} />
         </>
       )}
