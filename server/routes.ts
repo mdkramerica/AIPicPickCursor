@@ -267,10 +267,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error) {
       console.error("Error analyzing session:", error);
+      console.error("Error stack:", error instanceof Error ? error.stack : "No stack trace");
+      console.error("Error details:", {
+        name: error instanceof Error ? error.name : "Unknown",
+        message: error instanceof Error ? error.message : String(error),
+      });
+      
       await storage.updateSession(req.params.sessionId, {
         status: "failed",
       });
-      res.status(500).json({ message: "Failed to analyze photos" });
+      
+      // Return more specific error message for debugging
+      const errorMessage = error instanceof Error ? error.message : "Failed to analyze photos";
+      res.status(500).json({ 
+        message: "Failed to analyze photos",
+        error: errorMessage,
+        details: "Check server logs for more information"
+      });
     }
   });
 

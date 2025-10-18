@@ -17,6 +17,8 @@ export class PhotoAnalysisService {
     
     try {
       const modelPath = path.join(process.cwd(), 'models');
+      console.log(`🔍 Loading models from: ${modelPath}`);
+      console.log(`📁 Current working directory: ${process.cwd()}`);
       
       // Use SSD MobileNet for better face detection in group photos
       await faceapi.nets.ssdMobilenetv1.loadFromDisk(modelPath);
@@ -27,7 +29,10 @@ export class PhotoAnalysisService {
       console.log('✅ Face-API models loaded successfully (SSD MobileNet)');
     } catch (error) {
       console.error('❌ Failed to load Face-API models:', error);
-      throw error;
+      console.error('❌ Error name:', error instanceof Error ? error.name : 'Unknown');
+      console.error('❌ Error message:', error instanceof Error ? error.message : String(error));
+      console.error('❌ Model path attempted:', path.join(process.cwd(), 'models'));
+      throw new Error(`Failed to load ML models: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -371,8 +376,14 @@ export class PhotoAnalysisService {
         recommendation,
       };
     } catch (error) {
-      console.error('Error analyzing photo:', error);
-      throw error;
+      console.error('❌ Error analyzing photo:', photoId);
+      console.error('❌ Error details:', {
+        name: error instanceof Error ? error.name : 'Unknown',
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : 'No stack trace',
+      });
+      console.error('❌ Photo URL:', photoUrl);
+      throw new Error(`Failed to analyze photo ${photoId}: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
