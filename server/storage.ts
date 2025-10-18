@@ -32,6 +32,7 @@ export interface IStorage {
   getPhoto(id: string): Promise<Photo | undefined>;
   createPhoto(photo: InsertPhoto): Promise<Photo>;
   updatePhoto(id: string, data: Partial<Photo>): Promise<Photo | undefined>;
+  deletePhoto(id: string): Promise<void>;
   
   // Face operations
   createFace(face: InsertFace): Promise<Face>;
@@ -126,6 +127,12 @@ export class DatabaseStorage implements IStorage {
       .where(eq(photos.id, id))
       .returning();
     return photo;
+  }
+
+  async deletePhoto(id: string): Promise<void> {
+    await db
+      .delete(photos)
+      .where(eq(photos.id, id));
   }
 
   // Face operations

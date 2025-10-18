@@ -287,6 +287,112 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Album routes
+  app.get("/api/album", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const sessions = await storage.getSessionsByUser(userId);
+      
+      // Get best photos for each session
+      const albumData = await Promise.all(
+        sessions.map(async (session) => {
+          const photos = await storage.getPhotosBySession(session.id);
+          const bestPhoto = photos.find(p => p.isSelectedBest);
+          return {
+            session,
+            bestPhoto: bestPhoto || null,
+          };
+        })
+      );
+      
+      // Filter out sessions without best photos and sort by date (newest first)
+      const filteredAlbum = albumData
+        .filter(item => item.bestPhoto !== null)
+        .sort((a, b) => new Date(b.session.createdAt).getTime() - new Date(a.session.createdAt).getTime());
+      
+      res.json(filteredAlbum);
+    } catch (error) {
+      console.error("Error fetching album:", error);
+      res.status(500).json({ message: "Failed to fetch album" });
+    }
+  });
+
+  app.patch("/api/photos/:photoId/mark-best", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const photo = await storage.getPhoto(req.params.photoId);
+      
+      if (!photo) {
+        return res.status(404).json({ message: "Photo not found" });
+      }
+      
+      const session = await storage.getSession(photo.sessionId);
+      if (!session || session.userId !== userId) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      
+      // Unmark all other photos in the session
+      const sessionPhotos = await storage.getPhotosBySession(photo.sessionId);
+      await Promise.all(
+        sessionPhotos.map(p => 
+          storage.updatePhoto(p.id, { isSelectedBest: false })
+        )
+      );
+      
+      // Mark this photo as best
+      await storage.updatePhoto(req.params.photoId, { isSelectedBest: true });
+      
+      // Update session's best photo ID
+      await storage.updateSession(photo.sessionId, {
+        bestPhotoId: req.params.photoId,
+      });
+      
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error marking photo as best:", error);
+      res.status(500).json({ message: "Failed to mark photo as best" });
+    }
+  });
+
+  app.delete("/api/photos/:photoId", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const photo = await storage.getPhoto(req.params.photoId);
+      
+      if (!photo) {
+        return res.status(404).json({ message: "Photo not found" });
+      }
+      
+      const session = await storage.getSession(photo.sessionId);
+      if (!session || session.userId !== userId) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      
+      const wasBest = photo.isSelectedBest;
+      
+      // Delete the photo
+      await storage.deletePhoto(req.params.photoId);
+      
+      // Update session photo count
+      const remainingPhotos = await storage.getPhotosBySession(photo.sessionId);
+      await storage.updateSession(photo.sessionId, {
+        photoCount: remainingPhotos.length,
+      });
+      
+      // If this was the best photo, clear the best photo ID
+      if (wasBest) {
+        await storage.updateSession(photo.sessionId, {
+          bestPhotoId: null,
+        });
+      }
+      
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting photo:", error);
+      res.status(500).json({ message: "Failed to delete photo" });
+    }
+  });
+
   const httpServer = createServer(app);
 
   return httpServer;
