@@ -2,7 +2,8 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { setupAuth, isAuthenticated } from "./replitAuth";
+import { setupAuth, isAuthenticated, handleClerkWebhook, syncUserToDatabase } from "./clerkAuth";
+import { getAuth } from "@clerk/express";
 import {
   ObjectStorageService,
   ObjectNotFoundError,
@@ -16,22 +17,42 @@ import { authLimiter, analysisLimiter, uploadLimiter, apiLimiter } from "./middl
 import { validateUUID } from "./middleware/security";
 
 export async function registerRoutes(app: Express): Promise<Server> {
-  // Auth middleware (Required for Replit Auth)
-  await setupAuth(app);
+  // Setup Clerk authentication middleware
+  setupAuth(app);
+
+  // Clerk webhook endpoint (must be before other routes)
+  app.post('/api/webhooks/clerk', handleClerkWebhook);
 
   // Auth routes
   app.get('/api/auth/user', apiLimiter, isAuthenticated, asyncHandler(async (req: any, res) => {
-    const userId = req.user.claims.sub;
-    const user = await storage.getUser(userId);
+    const auth = getAuth(req);
+    const userId = auth.userId;
+    
+    // Get or create user in database
+    let user = await storage.getUser(userId);
+    
+    // If user doesn't exist in our DB yet, sync from Clerk
+    if (!user) {
+      // Get user info from Clerk (available in req.auth)
+      await syncUserToDatabase(userId, {
+        email: (req as any).auth?.sessionClaims?.email,
+        firstName: (req as any).auth?.sessionClaims?.firstName,
+        lastName: (req as any).auth?.sessionClaims?.lastName,
+        profileImageUrl: (req as any).auth?.sessionClaims?.profileImageUrl,
+      });
+      user = await storage.getUser(userId);
+    }
+    
     if (!user) {
       throw new AppError(404, "User not found");
     }
+    
     res.json(user);
   }));
 
   // Object Storage routes
   app.get("/objects/:objectPath(*)", isAuthenticated, async (req: any, res) => {
-    const userId = req.user?.claims?.sub;
+    const userId = req.userId;
     const objectStorageService = new ObjectStorageService();
     try {
       const objectFile = await objectStorageService.getObjectEntityFile(
@@ -63,13 +84,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Photo Session routes
   app.get("/api/sessions", apiLimiter, isAuthenticated, asyncHandler(async (req: any, res) => {
-    const userId = req.user.claims.sub;
+    const userId = req.userId;
     const sessions = await storage.getSessionsByUser(userId);
     res.json(sessions);
   }));
 
   app.post("/api/sessions", apiLimiter, isAuthenticated, asyncHandler(async (req: any, res) => {
-    const userId = req.user.claims.sub;
+    const userId = req.userId;
     const validatedData = insertPhotoSessionSchema.parse({
       ...req.body,
       userId,
@@ -80,7 +101,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   }));
 
   app.get("/api/sessions/:sessionId", apiLimiter, isAuthenticated, validateUUID("sessionId"), asyncHandler(async (req: any, res) => {
-    const userId = req.user.claims.sub;
+    const userId = req.userId;
     const session = await storage.getSession(req.params.sessionId);
     
     if (!session) {
@@ -101,7 +122,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Photo routes
   app.get("/api/sessions/:sessionId/photos", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.userId;
       const session = await storage.getSession(req.params.sessionId);
       
       if (!session) {
@@ -122,7 +143,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/sessions/:sessionId/photos", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.userId;
       const session = await storage.getSession(req.params.sessionId);
       
       if (!session) {
@@ -171,7 +192,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Preview face detection (quick detection before full analysis)
   app.post("/api/sessions/:sessionId/preview", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.userId;
       const session = await storage.getSession(req.params.sessionId);
       
       if (!session) {
@@ -205,7 +226,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/sessions/:sessionId/analyze", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.userId;
       const session = await storage.getSession(req.params.sessionId);
       
       if (!session) {
@@ -281,7 +302,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Album routes
   app.get("/api/album", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.userId;
       const sessions = await storage.getSessionsByUser(userId);
       
       // Get best photos for each session
@@ -310,7 +331,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.patch("/api/photos/:photoId/mark-best", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.userId;
       const photo = await storage.getPhoto(req.params.photoId);
       
       if (!photo) {
@@ -347,7 +368,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete("/api/photos/:photoId", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.userId;
       const photo = await storage.getPhoto(req.params.photoId);
       
       if (!photo) {

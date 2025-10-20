@@ -1,6 +1,7 @@
 import { Sparkles, Eye, Smile, Zap, CheckCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { SignInButton } from "@clerk/clerk-react";
 
 export default function Landing() {
   return (
@@ -12,9 +13,11 @@ export default function Landing() {
             <Sparkles className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />
             <span className="text-base sm:text-xl font-semibold">AI Photo Selector</span>
           </div>
-          <Button asChild data-testid="button-login" className="min-h-[44px]">
-            <a href="/api/login">Sign In</a>
-          </Button>
+          <SignInButton mode="modal">
+            <Button data-testid="button-login" className="min-h-[44px]">
+              Sign In
+            </Button>
+          </SignInButton>
         </div>
       </header>
 
@@ -30,12 +33,12 @@ export default function Landing() {
               No more scrolling through dozens of shots. Our AI analyzes faces, detects open eyes and smiles, 
               then recommends the best photo from your group shots—instantly.
             </p>
-            <Button size="lg" asChild className="text-base sm:text-lg px-6 sm:px-8 py-5 sm:py-6 min-h-[52px]" data-testid="button-get-started">
-              <a href="/api/login">
+            <SignInButton mode="modal">
+              <Button size="lg" className="text-base sm:text-lg px-6 sm:px-8 py-5 sm:py-6 min-h-[52px]" data-testid="button-get-started">
                 <Sparkles className="mr-2 h-5 w-5" />
                 Get Started Free
-              </a>
-            </Button>
+              </Button>
+            </SignInButton>
           </div>
         </div>
       </section>
