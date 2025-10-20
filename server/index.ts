@@ -84,6 +84,13 @@ app.use((req, res, next) => {
     log(`serving on port ${port}`);
   });
 })().catch((err) => {
+  console.error("======================");
+  console.error("FATAL: Failed to start server");
+  console.error("======================");
+  console.error("Error:", err);
+  console.error("Message:", err.message);
+  console.error("Stack:", err.stack);
+  console.error("======================");
   logger.error("Failed to start server", { error: err.message, stack: err.stack });
   process.exit(1);
 });
