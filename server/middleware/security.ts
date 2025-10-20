@@ -36,6 +36,8 @@ export const securityHeaders = (req: Request, res: Response, next: NextFunction)
         "font-src 'self' data: https://fonts.gstatic.com",
         "connect-src 'self' https://*.clerk.accounts.dev https://api.clerk.com",
         "frame-src https://*.clerk.accounts.dev",
+        "worker-src 'self' blob:",
+        "child-src 'self' blob:",
         "frame-ancestors 'none'",
       ].join("; ")
     );

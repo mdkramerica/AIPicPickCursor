@@ -3,7 +3,7 @@ import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { ClerkProvider, SignedIn, SignedOut, useAuth } from "@clerk/clerk-react";
+import { ClerkProvider, SignedIn, SignedOut, ClerkLoading, ClerkLoaded } from "@clerk/clerk-react";
 import NotFound from "@/pages/not-found";
 import Landing from "@/pages/landing";
 import Dashboard from "@/pages/dashboard";
@@ -20,38 +20,41 @@ if (!CLERK_PUBLISHABLE_KEY) {
 }
 
 function Router() {
-  const { isLoaded } = useAuth();
-
-  // Show loading spinner while Clerk is initializing
-  if (!isLoaded) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="text-center">
-          <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto mb-4" />
-          <p className="text-muted-foreground">Loading...</p>
-        </div>
-      </div>
-    );
-  }
+  console.log("Router rendering");
 
   return (
     <Switch>
-      <SignedOut>
-        <Route path="/" component={Landing} />
-      </SignedOut>
-      <SignedIn>
-        <Route path="/" component={Dashboard} />
-        <Route path="/album" component={Album} />
-        <Route path="/session/:sessionId/compare" component={Comparison} />
-      </SignedIn>
+      <Route path="/">
+        <SignedOut>
+          <Landing />
+        </SignedOut>
+        <SignedIn>
+          <Dashboard />
+        </SignedIn>
+      </Route>
+      <Route path="/album">
+        <SignedIn>
+          <Album />
+        </SignedIn>
+      </Route>
+      <Route path="/session/:sessionId/compare">
+        <SignedIn>
+          <Comparison />
+        </SignedIn>
+      </Route>
       <Route component={NotFound} />
     </Switch>
   );
 }
 
 function App() {
+  console.log("App rendering, Clerk key:", CLERK_PUBLISHABLE_KEY ? "present" : "missing");
+
   return (
-    <ClerkProvider publishableKey={CLERK_PUBLISHABLE_KEY}>
+    <ClerkProvider
+      publishableKey={CLERK_PUBLISHABLE_KEY}
+      afterSignOutUrl="/"
+    >
       <QueryClientProvider client={queryClient}>
         <TooltipProvider>
           <Toaster />
