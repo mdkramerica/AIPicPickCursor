@@ -110,14 +110,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     
     if (session.userId !== userId) {
       throw new AppError(403, "Forbidden");
-      }
-      
-      res.json(session);
-    } catch (error) {
-      console.error("Error fetching session:", error);
-      res.status(500).json({ message: "Failed to fetch session" });
     }
-  });
+    
+    res.json(session);
+  }));
 
   // Photo routes
   app.get("/api/sessions/:sessionId/photos", isAuthenticated, async (req: any, res) => {
