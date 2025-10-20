@@ -30,11 +30,12 @@ export const securityHeaders = (req: Request, res: Response, next: NextFunction)
       "Content-Security-Policy",
       [
         "default-src 'self'",
-        "img-src 'self' data: https://storage.googleapis.com",
-        "script-src 'self' 'unsafe-inline'", // Consider removing unsafe-inline in production
-        "style-src 'self' 'unsafe-inline'",
-        "font-src 'self'",
-        "connect-src 'self'",
+        "img-src 'self' data: https: blob:",
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.clerk.accounts.dev",
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+        "font-src 'self' data: https://fonts.gstatic.com",
+        "connect-src 'self' https://*.clerk.accounts.dev https://api.clerk.com",
+        "frame-src https://*.clerk.accounts.dev",
         "frame-ancestors 'none'",
       ].join("; ")
     );
