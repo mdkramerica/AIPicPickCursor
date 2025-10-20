@@ -14,7 +14,8 @@ import Album from "@/pages/album";
 const CLERK_PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
 if (!CLERK_PUBLISHABLE_KEY) {
-  throw new Error("Missing Clerk Publishable Key");
+  console.error("Missing VITE_CLERK_PUBLISHABLE_KEY environment variable");
+  throw new Error("Missing Clerk Publishable Key. Please set VITE_CLERK_PUBLISHABLE_KEY in your environment.");
 }
 
 function Router() {

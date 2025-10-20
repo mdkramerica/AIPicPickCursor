@@ -1,3 +1,6 @@
+// Load environment variables from .env file
+import "dotenv/config";
+
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
@@ -48,10 +51,6 @@ app.use((req, res, next) => {
 (async () => {
   const server = await registerRoutes(app);
 
-  // Error handling middleware (must be after routes)
-  app.use(notFoundHandler);
-  app.use(errorHandler);
-
   // importantly only setup vite in development and after
   // setting up all the other routes so the catch-all route
   // doesn't interfere with the other routes
@@ -60,6 +59,10 @@ app.use((req, res, next) => {
   } else {
     serveStatic(app);
   }
+
+  // Error handling middleware (must be after routes AND static files)
+  app.use(notFoundHandler);
+  app.use(errorHandler);
 
   // ALWAYS serve the app on the port specified in the environment variable PORT
   // Other ports are firewalled. Default to 5000 if not specified.

@@ -6,9 +6,26 @@ import { storage } from "./storage";
  * Setup Clerk authentication middleware
  */
 export function setupAuth(app: Express) {
+  // Verify Clerk keys are configured
+  const publishableKey = process.env.CLERK_PUBLISHABLE_KEY;
+  const secretKey = process.env.CLERK_SECRET_KEY;
+  
+  if (!publishableKey || !secretKey) {
+    console.error("======================");
+    console.error("CLERK CONFIGURATION ERROR");
+    console.error("======================");
+    console.error("CLERK_PUBLISHABLE_KEY:", publishableKey ? "SET" : "MISSING");
+    console.error("CLERK_SECRET_KEY:", secretKey ? "SET" : "MISSING");
+    console.error("======================");
+    throw new Error("Clerk keys are not configured. Please set CLERK_PUBLISHABLE_KEY and CLERK_SECRET_KEY environment variables.");
+  }
+  
   // Apply Clerk middleware to all routes
   // This makes auth information available on req.auth
-  app.use(clerkMiddleware());
+  app.use(clerkMiddleware({
+    publishableKey,
+    secretKey,
+  }));
 }
 
 /**

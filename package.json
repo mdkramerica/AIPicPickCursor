@@ -4,9 +4,9 @@
   "type": "module",
   "license": "MIT",
   "scripts": {
-    "dev": "NODE_ENV=development tsx server/index.ts",
-    "build": "vite build && cp -r server dist/ && cp -r shared dist/ && cp -r models dist/ && cp vite.config.ts dist/ && mv dist/public dist/server/public",
-    "start": "NODE_ENV=production tsx dist/server/index.ts",
+    "dev": "NODE_ENV=development npx tsx server/index.ts",
+    "build": "rm -rf dist && vite build && cp -r server dist/ && cp -r shared dist/ && cp -r models dist/ && cp vite.config.ts dist/ && mv dist/public dist/server/public",
+    "start": "NODE_ENV=production npx tsx dist/server/index.ts",
     "check": "tsc",
     "db:push": "drizzle-kit push"
   },
@@ -59,6 +59,7 @@
     "cmdk": "^1.1.1",
     "connect-pg-simple": "^10.0.0",
     "date-fns": "^3.6.0",
+    "dotenv": "^17.2.3",
     "drizzle-orm": "^0.39.1",
     "drizzle-zod": "^0.7.0",
     "embla-carousel-react": "^8.6.0",
