@@ -1,10 +1,19 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
+import { errorHandler, notFoundHandler } from "./middleware/errorHandler";
+import { securityHeaders, validateRequest } from "./middleware/security";
+import { logger } from "./middleware/logger";
 
 const app = express();
-app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
+
+// Security middleware
+app.use(securityHeaders);
+app.use(validateRequest);
+
+// Body parsing with size limits
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: false, limit: "10mb" }));
 
 app.use((req, res, next) => {
   const start = Date.now();
@@ -39,13 +48,9 @@ app.use((req, res, next) => {
 (async () => {
   const server = await registerRoutes(app);
 
-  app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
-    const status = err.status || err.statusCode || 500;
-    const message = err.message || "Internal Server Error";
-
-    res.status(status).json({ message });
-    throw err;
-  });
+  // Error handling middleware (must be after routes)
+  app.use(notFoundHandler);
+  app.use(errorHandler);
 
   // importantly only setup vite in development and after
   // setting up all the other routes so the catch-all route
@@ -61,11 +66,24 @@ app.use((req, res, next) => {
   // this serves both the API and the client.
   // It is the only port that is not firewalled.
   const port = parseInt(process.env.PORT || '5000', 10);
-  server.listen({
+  const listenOptions: any = {
     port,
     host: "0.0.0.0",
-    reusePort: true,
-  }, () => {
+  };
+  
+  // Only use reusePort on Linux (not supported on macOS)
+  if (process.platform === 'linux') {
+    listenOptions.reusePort = true;
+  }
+  
+  server.listen(listenOptions, () => {
+    logger.info(`Server started on port ${port}`, { 
+      environment: process.env.NODE_ENV,
+      port 
+    });
     log(`serving on port ${port}`);
   });
-})();
+})().catch((err) => {
+  logger.error("Failed to start server", { error: err.message, stack: err.stack });
+  process.exit(1);
+});

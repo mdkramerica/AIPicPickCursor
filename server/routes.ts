@@ -10,22 +10,24 @@ import {
 import { ObjectPermission } from "./objectAcl";
 import { photoAnalysisService } from "./photoAnalysis";
 import { insertPhotoSessionSchema, insertPhotoSchema } from "@shared/schema";
+import { asyncHandler, AppError } from "./middleware/errorHandler";
+import { logger } from "./middleware/logger";
+import { authLimiter, analysisLimiter, uploadLimiter, apiLimiter } from "./middleware/rateLimiter";
+import { validateUUID } from "./middleware/security";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Auth middleware (Required for Replit Auth)
   await setupAuth(app);
 
   // Auth routes
-  app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
-    try {
-      const userId = req.user.claims.sub;
-      const user = await storage.getUser(userId);
-      res.json(user);
-    } catch (error) {
-      console.error("Error fetching user:", error);
-      res.status(500).json({ message: "Failed to fetch user" });
+  app.get('/api/auth/user', apiLimiter, isAuthenticated, asyncHandler(async (req: any, res) => {
+    const userId = req.user.claims.sub;
+    const user = await storage.getUser(userId);
+    if (!user) {
+      throw new AppError(404, "User not found");
     }
-  });
+    res.json(user);
+  }));
 
   // Object Storage routes
   app.get("/objects/:objectPath(*)", isAuthenticated, async (req: any, res) => {
@@ -41,7 +43,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         requestedPermission: ObjectPermission.READ,
       });
       if (!canAccess) {
-        return res.sendStatus(401);
+        return res.sendStatus(403); // Fixed: 403 for forbidden, not 401
       }
       objectStorageService.downloadObject(objectFile, res);
     } catch (error) {
@@ -53,51 +55,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/objects/upload", isAuthenticated, async (req, res) => {
+  app.post("/api/objects/upload", uploadLimiter, isAuthenticated, asyncHandler(async (req, res) => {
     const objectStorageService = new ObjectStorageService();
     const uploadURL = await objectStorageService.getObjectEntityUploadURL();
     res.json({ uploadURL });
-  });
+  }));
 
   // Photo Session routes
-  app.get("/api/sessions", isAuthenticated, async (req: any, res) => {
-    try {
-      const userId = req.user.claims.sub;
-      const sessions = await storage.getSessionsByUser(userId);
-      res.json(sessions);
-    } catch (error) {
-      console.error("Error fetching sessions:", error);
-      res.status(500).json({ message: "Failed to fetch sessions" });
-    }
-  });
+  app.get("/api/sessions", apiLimiter, isAuthenticated, asyncHandler(async (req: any, res) => {
+    const userId = req.user.claims.sub;
+    const sessions = await storage.getSessionsByUser(userId);
+    res.json(sessions);
+  }));
 
-  app.post("/api/sessions", isAuthenticated, async (req: any, res) => {
-    try {
-      const userId = req.user.claims.sub;
-      const validatedData = insertPhotoSessionSchema.parse({
-        ...req.body,
-        userId,
-      });
-      
-      const session = await storage.createSession(validatedData);
-      res.json(session);
-    } catch (error) {
-      console.error("Error creating session:", error);
-      res.status(500).json({ message: "Failed to create session" });
-    }
-  });
+  app.post("/api/sessions", apiLimiter, isAuthenticated, asyncHandler(async (req: any, res) => {
+    const userId = req.user.claims.sub;
+    const validatedData = insertPhotoSessionSchema.parse({
+      ...req.body,
+      userId,
+    });
+    
+    const session = await storage.createSession(validatedData);
+    res.json(session);
+  }));
 
-  app.get("/api/sessions/:sessionId", isAuthenticated, async (req: any, res) => {
-    try {
-      const userId = req.user.claims.sub;
-      const session = await storage.getSession(req.params.sessionId);
-      
-      if (!session) {
-        return res.status(404).json({ message: "Session not found" });
-      }
-      
-      if (session.userId !== userId) {
-        return res.status(403).json({ message: "Forbidden" });
+  app.get("/api/sessions/:sessionId", apiLimiter, isAuthenticated, validateUUID("sessionId"), asyncHandler(async (req: any, res) => {
+    const userId = req.user.claims.sub;
+    const session = await storage.getSession(req.params.sessionId);
+    
+    if (!session) {
+      throw new AppError(404, "Session not found");
+    }
+    
+    if (session.userId !== userId) {
+      throw new AppError(403, "Forbidden");
       }
       
       res.json(session);

@@ -46,7 +46,11 @@ export const photoSessions = pgTable("photo_sessions", {
   bestPhotoId: varchar("best_photo_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+}, (table) => [
+  index("idx_photo_sessions_user_id").on(table.userId),
+  index("idx_photo_sessions_created_at").on(table.createdAt),
+  index("idx_photo_sessions_status").on(table.status),
+]);
 
 // Photos Table
 export const photos = pgTable("photos", {
@@ -63,7 +67,11 @@ export const photos = pgTable("photos", {
   qualityScore: decimal("quality_score", { precision: 5, scale: 2 }), // 0-100 score
   analysisData: jsonb("analysis_data"), // Store complete analysis results
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => [
+  index("idx_photos_session_id").on(table.sessionId),
+  index("idx_photos_upload_order").on(table.uploadOrder),
+  index("idx_photos_is_selected_best").on(table.isSelectedBest),
+]);
 
 // Faces Table (detected faces in each photo)
 export const faces = pgTable("faces", {
@@ -81,7 +89,10 @@ export const faces = pgTable("faces", {
   qualityScore: decimal("quality_score", { precision: 5, scale: 2 }),
   excluded: boolean("excluded").default(false).notNull(), // user can exclude faces from analysis
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => [
+  index("idx_faces_photo_id").on(table.photoId),
+  index("idx_faces_person_index").on(table.personIndex),
+]);
 
 // Define relations
 export const usersRelations = relations(users, ({ many }) => ({
