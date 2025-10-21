@@ -129,7 +129,7 @@ export default function Dashboard() {
       const startPolling = () => {
         progressIntervalRef.current = setInterval(async () => {
           try {
-            const res = await apiRequest("GET", `/api/sessions/${sessionId}/progress`, {});
+            const res = await apiRequest("GET", `/api/sessions/${sessionId}/progress`);
             const data = await res.json();
 
             if (data.progress) {
@@ -156,7 +156,7 @@ export default function Dashboard() {
 
       // Start the analysis
       console.log('🚀 Starting analysis POST request');
-      const res = await apiRequest("POST", `/api/sessions/${sessionId}/analyze`, {});
+      const res = await apiRequest("POST", `/api/sessions/${sessionId}/analyze`);
       return await res.json();
     },
     onSuccess: (_, sessionId) => {
