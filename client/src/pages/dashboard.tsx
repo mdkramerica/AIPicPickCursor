@@ -171,7 +171,7 @@ export default function Dashboard() {
           } catch (error) {
             console.error('❌ Error polling progress:', error);
           }
-        }, 500); // Poll every 500ms
+        }, 2000); // Poll every 2 seconds to avoid rate limits
       };
 
       // Start polling immediately
