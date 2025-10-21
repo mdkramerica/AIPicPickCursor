@@ -32,7 +32,7 @@ export default function Dashboard() {
   const { toast } = useToast();
   const [selectedSession, setSelectedSession] = useState<string | null>(null);
   const [analysisProgress, setAnalysisProgress] = useState<AnalysisProgress | null>(null);
-  const eventSourceRef = useRef<EventSource | null>(null);
+  const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Fetch sessions
   const { data: sessions, isLoading: sessionsLoading } = useQuery<PhotoSession[]>({
@@ -120,40 +120,39 @@ export default function Dashboard() {
   // Navigate to results
   const [, navigate] = useLocation();
 
-  // Analyze session mutation with SSE progress tracking
+  // Analyze session mutation with polling-based progress tracking
   const analyzeSessionMutation = useMutation({
     mutationFn: async (sessionId: string) => {
-      console.log('🔌 Connecting to SSE for progress updates:', `/api/sessions/${sessionId}/progress`);
+      console.log('🚀 Starting analysis with polling-based progress tracking');
 
-      // Connect to SSE for progress updates BEFORE starting analysis
-      const eventSource = new EventSource(`/api/sessions/${sessionId}/progress`);
-      eventSourceRef.current = eventSource;
+      // Start polling for progress updates
+      const startPolling = () => {
+        progressIntervalRef.current = setInterval(async () => {
+          try {
+            const res = await apiRequest("GET", `/api/sessions/${sessionId}/progress`, {});
+            const data = await res.json();
 
-      eventSource.onopen = () => {
-        console.log('✅ SSE connection opened');
+            if (data.progress) {
+              console.log('📊 Progress update:', data.progress);
+              setAnalysisProgress(data.progress);
+
+              // Stop polling when complete or error
+              if (data.progress.status === 'complete' || data.progress.status === 'error') {
+                console.log('✅ Analysis finished, stopping polling');
+                if (progressIntervalRef.current) {
+                  clearInterval(progressIntervalRef.current);
+                  progressIntervalRef.current = null;
+                }
+              }
+            }
+          } catch (error) {
+            console.error('❌ Error polling progress:', error);
+          }
+        }, 500); // Poll every 500ms
       };
 
-      eventSource.onmessage = (event) => {
-        console.log('📨 Progress update received:', event.data);
-        const progress: AnalysisProgress = JSON.parse(event.data);
-        console.log('📊 Parsed progress:', progress);
-        setAnalysisProgress(progress);
-
-        if (progress.status === 'complete') {
-          console.log('✅ Analysis complete, closing SSE');
-          eventSource.close();
-          eventSourceRef.current = null;
-        }
-      };
-
-      eventSource.onerror = (error) => {
-        console.error('❌ SSE error:', error);
-        eventSource.close();
-        eventSourceRef.current = null;
-      };
-
-      // Wait a bit for SSE to connect before starting analysis
-      await new Promise(resolve => setTimeout(resolve, 100));
+      // Start polling immediately
+      startPolling();
 
       // Start the analysis
       console.log('🚀 Starting analysis POST request');
@@ -163,7 +162,18 @@ export default function Dashboard() {
     onSuccess: (_, sessionId) => {
       queryClient.invalidateQueries({ queryKey: ["/api/sessions", sessionId, "photos"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sessions"] });
-      setAnalysisProgress(null);
+
+      // Clear polling interval
+      if (progressIntervalRef.current) {
+        clearInterval(progressIntervalRef.current);
+        progressIntervalRef.current = null;
+      }
+
+      // Clear progress after a brief delay to show completion
+      setTimeout(() => {
+        setAnalysisProgress(null);
+      }, 1000);
+
       toast({
         title: "Analysis Complete",
         description: "Your photos have been analyzed!",
@@ -171,11 +181,13 @@ export default function Dashboard() {
       navigate(`/session/${sessionId}/compare`);
     },
     onError: (error: Error) => {
-      setAnalysisProgress(null);
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
-        eventSourceRef.current = null;
+      // Clear polling interval
+      if (progressIntervalRef.current) {
+        clearInterval(progressIntervalRef.current);
+        progressIntervalRef.current = null;
       }
+
+      setAnalysisProgress(null);
 
       if (isUnauthorizedError(error)) {
         toast({
@@ -238,11 +250,11 @@ export default function Dashboard() {
   // Debug panel toggle
   const [showDebug, setShowDebug] = useState(false);
 
-  // Cleanup EventSource on unmount
+  // Cleanup polling interval on unmount
   useEffect(() => {
     return () => {
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
+      if (progressIntervalRef.current) {
+        clearInterval(progressIntervalRef.current);
       }
     };
   }, []);

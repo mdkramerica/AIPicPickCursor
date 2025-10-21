@@ -6,6 +6,7 @@ import { loadImageFromUrl } from './imageLoader.js';
 import { createCanvas } from 'canvas';
 import path from 'path';
 import { EventEmitter } from 'events';
+import { storage } from './storage';
 
 export interface AnalysisProgress {
   sessionId: string;
@@ -20,9 +21,11 @@ export interface AnalysisProgress {
 export class PhotoAnalysisService {
   private modelsLoaded = false;
   private progressEmitter = new EventEmitter();
+  // In-memory progress store for polling
+  private progressStore = new Map<string, AnalysisProgress>();
 
   /**
-   * Subscribe to analysis progress updates
+   * Subscribe to analysis progress updates (for SSE)
    */
   onProgress(sessionId: string, callback: (progress: AnalysisProgress) => void): () => void {
     const eventName = `progress:${sessionId}`;
@@ -35,11 +38,35 @@ export class PhotoAnalysisService {
   }
 
   /**
+   * Get current progress for a session (for polling)
+   */
+  getProgress(sessionId: string): AnalysisProgress | null {
+    return this.progressStore.get(sessionId) || null;
+  }
+
+  /**
+   * Clear progress for a session
+   */
+  clearProgress(sessionId: string): void {
+    this.progressStore.delete(sessionId);
+  }
+
+  /**
    * Emit progress update for a session
    */
   private emitProgress(progress: AnalysisProgress): void {
     const eventName = `progress:${progress.sessionId}`;
+    // Store in memory for polling
+    this.progressStore.set(progress.sessionId, progress);
+    // Also emit for SSE (if anyone is listening)
     this.progressEmitter.emit(eventName, progress);
+
+    // Auto-cleanup completed/error progress after 30 seconds
+    if (progress.status === 'complete' || progress.status === 'error') {
+      setTimeout(() => {
+        this.progressStore.delete(progress.sessionId);
+      }, 30000);
+    }
   }
   
   /**
@@ -661,6 +688,139 @@ export class PhotoAnalysisService {
       analyses,
       bestPhotoId,
     };
+  }
+
+  /**
+   * Get cached analysis for a photo if available
+   */
+  async getCachedAnalysis(photoId: string): Promise<PhotoAnalysisResult | null> {
+    try {
+      const photo = await storage.getPhoto(photoId);
+      if (!photo?.analysisData) return null;
+      
+      // Parse analysis data
+      const analysisData = typeof photo.analysisData === 'string' 
+        ? JSON.parse(photo.analysisData) 
+        : photo.analysisData;
+      
+      return analysisData as PhotoAnalysisResult;
+    } catch (error) {
+      console.warn(`Failed to get cached analysis for photo ${photoId}:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Batch analyze photos for grouping (lighter weight than full analysis)
+   */
+  async batchAnalyzeForGrouping(
+    photos: { id: string; fileUrl: string }[],
+    onProgress?: (current: number, total: number, photoId: string) => void
+  ): Promise<Map<string, PhotoAnalysisResult>> {
+    await this.loadModels();
+    
+    const results = new Map<string, PhotoAnalysisResult>();
+    
+    for (let i = 0; i < photos.length; i++) {
+      const photo = photos[i];
+      
+      // Check if we have cached analysis first
+      const cached = await this.getCachedAnalysis(photo.id);
+      if (cached) {
+        results.set(photo.id, cached);
+        onProgress?.(i + 1, photos.length, photo.id);
+        continue;
+      }
+      
+      try {
+        onProgress?.(i + 1, photos.length, photo.id);
+        
+        // For grouping, we can use a faster analysis mode
+        const analysis = await this.analyzePhoto(photo.fileUrl, photo.id);
+        results.set(photo.id, analysis);
+        
+        // Cache the analysis
+        await storage.updatePhoto(photo.id, {
+          analysisData: analysis,
+          qualityScore: analysis.overallQualityScore.toString(),
+        });
+        
+      } catch (error) {
+        console.error(`Failed to analyze photo ${photo.id} for grouping:`, error);
+        // Add a fallback analysis
+        const fallbackAnalysis: PhotoAnalysisResult = {
+          photoId: photo.id,
+          faces: [],
+          overallQualityScore: 0,
+          issues: {
+            closedEyes: 0,
+            poorExpressions: 0,
+            blurryFaces: 0,
+          },
+          recommendation: 'poor',
+        };
+        results.set(photo.id, fallbackAnalysis);
+      }
+    }
+    
+    return results;
+  }
+
+  /**
+   * Extract face features for grouping analysis
+   */
+  async extractFaceFeatures(photoUrl: string, photoId: string): Promise<{
+    faceCount: number;
+    facePositions: Array<{ x: number; y: number; width: number; height: number }>;
+    avgFaceSize: number;
+    hasFaces: boolean;
+  }> {
+    await this.loadModels();
+    
+    try {
+      const image = await loadImageFromUrl(photoUrl);
+      const canvas = createCanvas(image.width, image.height);
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(image, 0, 0);
+      
+      // Use multi-scale detection without full analysis
+      const detections = await this.multiScaleDetection(canvas, false);
+      
+      if (detections.length === 0) {
+        return {
+          faceCount: 0,
+          facePositions: [],
+          avgFaceSize: 0,
+          hasFaces: false,
+        };
+      }
+      
+      const facePositions = detections.map(detection => ({
+        x: detection.detection.box.x / canvas.width,
+        y: detection.detection.box.y / canvas.height,
+        width: detection.detection.box.width / canvas.width,
+        height: detection.detection.box.height / canvas.height,
+      }));
+      
+      const avgFaceSize = facePositions.reduce((sum, face) => 
+        sum + (face.width * face.height), 0) / facePositions.length;
+      
+      return {
+        faceCount: detections.length,
+        facePositions,
+        avgFaceSize,
+        hasFaces: true,
+      };
+      
+    } catch (error) {
+      console.error(`Error extracting face features for ${photoId}:`, error);
+      return {
+        faceCount: 0,
+        facePositions: [],
+        avgFaceSize: 0,
+        hasFaces: false,
+      };
+    }
   }
 }
 
