@@ -5,9 +5,42 @@ import type { FaceAnalysis, PhotoAnalysisResult } from "@shared/schema";
 import { loadImageFromUrl } from './imageLoader.js';
 import { createCanvas } from 'canvas';
 import path from 'path';
+import { EventEmitter } from 'events';
+
+export interface AnalysisProgress {
+  sessionId: string;
+  currentPhoto: number;
+  totalPhotos: number;
+  percentage: number;
+  status: 'loading_models' | 'analyzing' | 'selecting_best' | 'complete' | 'error';
+  message: string;
+  currentPhotoId?: string;
+}
 
 export class PhotoAnalysisService {
   private modelsLoaded = false;
+  private progressEmitter = new EventEmitter();
+
+  /**
+   * Subscribe to analysis progress updates
+   */
+  onProgress(sessionId: string, callback: (progress: AnalysisProgress) => void): () => void {
+    const eventName = `progress:${sessionId}`;
+    this.progressEmitter.on(eventName, callback);
+
+    // Return unsubscribe function
+    return () => {
+      this.progressEmitter.off(eventName, callback);
+    };
+  }
+
+  /**
+   * Emit progress update for a session
+   */
+  private emitProgress(progress: AnalysisProgress): void {
+    const eventName = `progress:${progress.sessionId}`;
+    this.progressEmitter.emit(eventName, progress);
+  }
   
   /**
    * Load ML models once at startup
@@ -436,10 +469,11 @@ export class PhotoAnalysisService {
 
   /**
    * Analyze all photos in a session
+   * @param photos - Photos to analyze
    * @param faceSelections - Optional face selections per photo: { photoId: { faceIdx: true/false } }
    */
   async analyzeSession(
-    photos: { id: string; fileUrl: string }[], 
+    photos: { id: string; fileUrl: string }[],
     faceSelections?: Record<string, Record<number, boolean>>
   ): Promise<{
     analyses: PhotoAnalysisResult[];
@@ -447,7 +481,7 @@ export class PhotoAnalysisService {
   }> {
     // Analyze all photos with error handling
     const analyses: PhotoAnalysisResult[] = [];
-    
+
     for (const photo of photos) {
       try {
         const analysis = await this.analyzePhoto(photo.fileUrl, photo.id);
