@@ -6,6 +6,8 @@ import {
   faces,
   convertKitSettings,
   emailCampaigns,
+  photoGroups,
+  photoGroupMemberships,
   type User,
   type UpsertUser,
   type PhotoSession,
@@ -18,9 +20,14 @@ import {
   type InsertConvertKitSettings,
   type EmailCampaign,
   type InsertEmailCampaign,
+  type PhotoGroup,
+  type InsertPhotoGroup,
+  type PhotoGroupMembership,
+  type InsertPhotoGroupMembership,
+  type BulkSessionOptions,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and, isNull } from "drizzle-orm";
 
 export interface IStorage {
   // User operations (Required for Replit Auth)
@@ -32,6 +39,7 @@ export interface IStorage {
   getSession(id: string): Promise<PhotoSession | undefined>;
   createSession(session: InsertPhotoSession): Promise<PhotoSession>;
   updateSession(id: string, data: Partial<PhotoSession>): Promise<PhotoSession | undefined>;
+  updateSessionBulkMode(sessionId: string, bulkMode: boolean, options?: BulkSessionOptions): Promise<PhotoSession | undefined>;
   
   // Photo operations
   getPhotosBySession(sessionId: string): Promise<Photo[]>;
@@ -43,6 +51,20 @@ export interface IStorage {
   // Face operations
   createFace(face: InsertFace): Promise<Face>;
   getFacesByPhoto(photoId: string): Promise<Face[]>;
+  
+  // Photo Group operations
+  getGroupsBySession(sessionId: string): Promise<PhotoGroup[]>;
+  getGroup(id: string): Promise<PhotoGroup | undefined>;
+  createGroup(group: InsertPhotoGroup): Promise<PhotoGroup>;
+  updateGroup(id: string, data: Partial<PhotoGroup>): Promise<PhotoGroup | undefined>;
+  deleteGroup(id: string): Promise<void>;
+  
+  // Photo Group Membership operations
+  getMembershipsByGroup(groupId: string): Promise<PhotoGroupMembership[]>;
+  getMembershipsByPhoto(photoId: string): Promise<PhotoGroupMembership[]>;
+  addPhotoToGroup(groupId: string, photoId: string, data?: Partial<InsertPhotoGroupMembership>): Promise<PhotoGroupMembership>;
+  removePhotoFromGroup(groupId: string, photoId: string): Promise<void>;
+  updateMembership(membershipId: string, data: Partial<PhotoGroupMembership>): Promise<PhotoGroupMembership | undefined>;
   
   // ConvertKit operations
   getConvertKitSettings(userId: string): Promise<ConvertKitSettings | undefined>;
@@ -217,6 +239,115 @@ export class DatabaseStorage implements IStorage {
       .where(eq(emailCampaigns.id, id))
       .returning();
     return campaign;
+  }
+
+  // Photo Group operations
+  async getGroupsBySession(sessionId: string): Promise<PhotoGroup[]> {
+    return await db
+      .select()
+      .from(photoGroups)
+      .where(eq(photoGroups.sessionId, sessionId))
+      .orderBy(desc(photoGroups.createdAt));
+  }
+
+  async getGroup(id: string): Promise<PhotoGroup | undefined> {
+    const [group] = await db
+      .select()
+      .from(photoGroups)
+      .where(eq(photoGroups.id, id));
+    return group;
+  }
+
+  async createGroup(groupData: InsertPhotoGroup): Promise<PhotoGroup> {
+    const [group] = await db
+      .insert(photoGroups)
+      .values(groupData)
+      .returning();
+    return group;
+  }
+
+  async updateGroup(id: string, data: Partial<PhotoGroup>): Promise<PhotoGroup | undefined> {
+    const [group] = await db
+      .update(photoGroups)
+      .set(data)
+      .where(eq(photoGroups.id, id))
+      .returning();
+    return group;
+  }
+
+  async deleteGroup(id: string): Promise<void> {
+    await db
+      .delete(photoGroups)
+      .where(eq(photoGroups.id, id));
+  }
+
+  // Photo Group Membership operations
+  async getMembershipsByGroup(groupId: string): Promise<PhotoGroupMembership[]> {
+    return await db
+      .select()
+      .from(photoGroupMemberships)
+      .where(eq(photoGroupMemberships.groupId, groupId));
+  }
+
+  async getMembershipsByPhoto(photoId: string): Promise<PhotoGroupMembership[]> {
+    return await db
+      .select()
+      .from(photoGroupMemberships)
+      .where(eq(photoGroupMemberships.photoId, photoId));
+  }
+
+  async addPhotoToGroup(groupId: string, photoId: string, data?: Partial<InsertPhotoGroupMembership>): Promise<PhotoGroupMembership> {
+    const [membership] = await db
+      .insert(photoGroupMemberships)
+      .values({
+        groupId,
+        photoId,
+        ...data,
+      })
+      .returning();
+    return membership;
+  }
+
+  async removePhotoFromGroup(groupId: string, photoId: string): Promise<void> {
+    await db
+      .delete(photoGroupMemberships)
+      .where(and(
+        eq(photoGroupMemberships.groupId, groupId),
+        eq(photoGroupMemberships.photoId, photoId)
+      ));
+  }
+
+  async updateMembership(membershipId: string, data: Partial<PhotoGroupMembership>): Promise<PhotoGroupMembership | undefined> {
+    const [membership] = await db
+      .update(photoGroupMemberships)
+      .set(data)
+      .where(eq(photoGroupMemberships.id, membershipId))
+      .returning();
+    return membership;
+  }
+
+  // Bulk Session Operations
+  async updateSessionBulkMode(sessionId: string, bulkMode: boolean, options?: BulkSessionOptions): Promise<PhotoSession | undefined> {
+    const updateData: Partial<PhotoSession> = {
+      bulkMode,
+      updatedAt: new Date(),
+    };
+
+    if (options) {
+      if (options.targetGroupSize !== undefined) {
+        updateData.targetGroupSize = options.targetGroupSize;
+      }
+      if (options.groupingAlgorithm !== undefined) {
+        updateData.groupingAlgorithm = options.groupingAlgorithm;
+      }
+    }
+
+    const [session] = await db
+      .update(photoSessions)
+      .set(updateData)
+      .where(eq(photoSessions.id, sessionId))
+      .returning();
+    return session;
   }
 }
 

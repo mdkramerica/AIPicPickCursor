@@ -44,12 +44,16 @@ export const photoSessions = pgTable("photo_sessions", {
   status: varchar("status", { length: 50 }).default("uploading").notNull(), // uploading, analyzing, completed, failed
   photoCount: integer("photo_count").default(0).notNull(),
   bestPhotoId: varchar("best_photo_id"),
+  bulkMode: boolean("bulk_mode").default(false).notNull(),
+  targetGroupSize: integer("target_group_size").default(5).notNull(),
+  groupingAlgorithm: varchar("grouping_algorithm", { length: 50 }).default("temporal_similarity").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => [
   index("idx_photo_sessions_user_id").on(table.userId),
   index("idx_photo_sessions_created_at").on(table.createdAt),
   index("idx_photo_sessions_status").on(table.status),
+  index("idx_photo_sessions_bulk_mode").on(table.bulkMode),
 ]);
 
 // Photos Table
@@ -110,6 +114,40 @@ export const convertKitSettings = pgTable("convertkit_settings", {
   index("idx_convertkit_settings_subscriber_id").on(table.subscriberId),
 ]);
 
+// Photo Groups Table
+export const photoGroups = pgTable("photo_groups", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sessionId: varchar("session_id").references(() => photoSessions.id, { onDelete: "cascade" }).notNull(),
+  name: varchar("name", { length: 255 }),
+  groupType: varchar("group_type", { length: 50 }).default("auto").notNull(), // auto, manual, merged
+  confidenceScore: decimal("confidence_score", { precision: 5, scale: 2 }),
+  similarityScore: decimal("similarity_score", { precision: 5, scale: 2 }),
+  timeWindowStart: timestamp("time_window_start"),
+  timeWindowEnd: timestamp("time_window_end"),
+  bestPhotoId: varchar("best_photo_id").references(() => photos.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("idx_photo_groups_session_id").on(table.sessionId),
+  index("idx_photo_groups_type").on(table.groupType),
+  index("idx_photo_groups_created_at").on(table.createdAt),
+]);
+
+// Photo Group Memberships Table (Many-to-Many relationship between photos and groups)
+export const photoGroupMemberships = pgTable("photo_group_memberships", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  groupId: varchar("group_id").references(() => photoGroups.id, { onDelete: "cascade" }).notNull(),
+  photoId: varchar("photo_id").references(() => photos.id, { onDelete: "cascade" }).notNull(),
+  confidenceScore: decimal("confidence_score", { precision: 5, scale: 2 }),
+  isExcluded: boolean("is_excluded").default(false).notNull(),
+  userNotes: text("user_notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("idx_photo_group_memberships_group_id").on(table.groupId),
+  index("idx_photo_group_memberships_photo_id").on(table.photoId),
+  index("idx_photo_group_memberships_is_excluded").on(table.isExcluded),
+  { name: "idx_photo_group_memberships_unique", columns: [table.groupId, table.photoId], unique: true },
+]);
+
 // Email campaigns for photo analysis results
 export const emailCampaigns = pgTable("email_campaigns", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -139,6 +177,7 @@ export const photoSessionsRelations = relations(photoSessions, ({ one, many }) =
   }),
   photos: many(photos),
   emailCampaigns: many(emailCampaigns),
+  photoGroups: many(photoGroups),
 }));
 
 export const photosRelations = relations(photos, ({ one, many }) => ({
@@ -147,6 +186,7 @@ export const photosRelations = relations(photos, ({ one, many }) => ({
     references: [photoSessions.id],
   }),
   faces: many(faces),
+  groupMemberships: many(photoGroupMemberships),
 }));
 
 export const facesRelations = relations(faces, ({ one }) => ({
@@ -160,6 +200,29 @@ export const convertKitSettingsRelations = relations(convertKitSettings, ({ one 
   user: one(users, {
     fields: [convertKitSettings.userId],
     references: [users.id],
+  }),
+}));
+
+export const photoGroupsRelations = relations(photoGroups, ({ one, many }) => ({
+  session: one(photoSessions, {
+    fields: [photoGroups.sessionId],
+    references: [photoSessions.id],
+  }),
+  bestPhoto: one(photos, {
+    fields: [photoGroups.bestPhotoId],
+    references: [photos.id],
+  }),
+  memberships: many(photoGroupMemberships),
+}));
+
+export const photoGroupMembershipsRelations = relations(photoGroupMemberships, ({ one }) => ({
+  group: one(photoGroups, {
+    fields: [photoGroupMemberships.groupId],
+    references: [photoGroups.id],
+  }),
+  photo: one(photos, {
+    fields: [photoGroupMemberships.photoId],
+    references: [photos.id],
   }),
 }));
 
@@ -204,6 +267,16 @@ export const insertEmailCampaignSchema = z.object({
   error: z.string().optional(),
 });
 
+export const insertPhotoGroupSchema = createInsertSchema(photoGroups).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertPhotoGroupMembershipSchema = createInsertSchema(photoGroupMemberships).omit({
+  id: true,
+  createdAt: true,
+});
+
 // TypeScript types
 export type User = typeof users.$inferSelect;
 export type UpsertUser = typeof users.$inferInsert;
@@ -222,6 +295,19 @@ export type InsertConvertKitSettings = z.infer<typeof insertConvertKitSettingsSc
 
 export type EmailCampaign = typeof emailCampaigns.$inferSelect;
 export type InsertEmailCampaign = z.infer<typeof insertEmailCampaignSchema>;
+
+export type PhotoGroup = typeof photoGroups.$inferSelect;
+export type InsertPhotoGroup = z.infer<typeof insertPhotoGroupSchema>;
+
+export type PhotoGroupMembership = typeof photoGroupMemberships.$inferSelect;
+export type InsertPhotoGroupMembership = z.infer<typeof insertPhotoGroupMembershipSchema>;
+
+// Additional types for bulk operations
+export interface BulkSessionOptions {
+  targetGroupSize?: number;
+  groupingAlgorithm?: string;
+  [key: string]: any;
+}
 
 // Analysis result types (not stored in DB, used for API responses)
 export interface FaceAnalysis {

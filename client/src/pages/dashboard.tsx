@@ -123,26 +123,40 @@ export default function Dashboard() {
   // Analyze session mutation with SSE progress tracking
   const analyzeSessionMutation = useMutation({
     mutationFn: async (sessionId: string) => {
-      // Connect to SSE for progress updates
+      console.log('🔌 Connecting to SSE for progress updates:', `/api/sessions/${sessionId}/progress`);
+
+      // Connect to SSE for progress updates BEFORE starting analysis
       const eventSource = new EventSource(`/api/sessions/${sessionId}/progress`);
       eventSourceRef.current = eventSource;
 
+      eventSource.onopen = () => {
+        console.log('✅ SSE connection opened');
+      };
+
       eventSource.onmessage = (event) => {
+        console.log('📨 Progress update received:', event.data);
         const progress: AnalysisProgress = JSON.parse(event.data);
+        console.log('📊 Parsed progress:', progress);
         setAnalysisProgress(progress);
 
         if (progress.status === 'complete') {
+          console.log('✅ Analysis complete, closing SSE');
           eventSource.close();
           eventSourceRef.current = null;
         }
       };
 
-      eventSource.onerror = () => {
+      eventSource.onerror = (error) => {
+        console.error('❌ SSE error:', error);
         eventSource.close();
         eventSourceRef.current = null;
       };
 
+      // Wait a bit for SSE to connect before starting analysis
+      await new Promise(resolve => setTimeout(resolve, 100));
+
       // Start the analysis
+      console.log('🚀 Starting analysis POST request');
       const res = await apiRequest("POST", `/api/sessions/${sessionId}/analyze`, {});
       return await res.json();
     },
