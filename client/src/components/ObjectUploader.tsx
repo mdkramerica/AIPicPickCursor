@@ -3,17 +3,13 @@ import { useState, useRef } from "react";
 import type { ReactNode, ChangeEvent } from "react";
 import Uppy from "@uppy/core";
 import { DashboardModal } from "@uppy/react";
-import AwsS3 from "@uppy/aws-s3";
+import XHRUpload from "@uppy/xhr-upload";
 import type { UploadResult } from "@uppy/core";
 import { Button } from "@/components/ui/button";
 
 interface ObjectUploaderProps {
   maxNumberOfFiles?: number;
   maxFileSize?: number;
-  onGetUploadParameters: (file: any) => Promise<{
-    method: "PUT";
-    url: string;
-  }>;
   onComplete?: (
     result: UploadResult<Record<string, unknown>, Record<string, unknown>>
   ) => void;
@@ -24,7 +20,6 @@ interface ObjectUploaderProps {
 export function ObjectUploader({
   maxNumberOfFiles = 1,
   maxFileSize = 10485760, // 10MB default
-  onGetUploadParameters,
   onComplete,
   buttonClassName,
   children,
@@ -43,15 +38,23 @@ export function ObjectUploader({
         type: 'photo'
       },
     })
-      .use(AwsS3, {
-        shouldUseMultipart: false,
-        getUploadParameters: onGetUploadParameters,
+      .use(XHRUpload, {
+        endpoint: '/api/objects/upload',
+        fieldName: 'file',
+        formData: true,
+        headers: {
+          // Credentials will be included automatically via cookies
+        },
       })
       .on("upload", () => {
         console.log("🚀 Upload started");
       })
       .on("upload-success", (file, response) => {
-        console.log("✅ Upload success:", file?.name);
+        console.log("✅ Upload success:", file?.name, response);
+        // Store the fileUrl from the response in the file's uploadURL for compatibility
+        if (file && response.body) {
+          file.uploadURL = (response.body as any).fileUrl;
+        }
       })
       .on("upload-error", (file, error) => {
         console.error("❌ Upload error:", file?.name, error);

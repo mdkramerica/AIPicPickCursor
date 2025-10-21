@@ -55,7 +55,26 @@ export class R2StorageService {
   }
 
   /**
+   * Upload a file directly to R2 (bypasses CORS issues)
+   */
+  async uploadFile(fileBuffer: Buffer, contentType: string): Promise<{ objectKey: string }> {
+    const objectKey = `uploads/${randomUUID()}`;
+
+    const command = new PutObjectCommand({
+      Bucket: this.bucketName,
+      Key: objectKey,
+      Body: fileBuffer,
+      ContentType: contentType,
+    });
+
+    await this.s3Client.send(command);
+
+    return { objectKey };
+  }
+
+  /**
    * Generate a presigned URL for uploading a file
+   * Note: This requires CORS configuration on R2 bucket
    */
   async getUploadURL(): Promise<{ uploadURL: string; objectKey: string }> {
     const objectKey = `uploads/${randomUUID()}`;

@@ -142,38 +142,9 @@ export default function Dashboard() {
     },
   });
 
-  const handleGetUploadParameters = async (file: any) => {
-    try {
-      const res = await apiRequest("POST", "/api/objects/upload", {});
-      if (!res.ok) {
-        const errorText = await res.text();
-        console.error("❌ Failed to get upload URL:", {
-          status: res.status,
-          statusText: res.statusText,
-          error: errorText
-        });
-        throw new Error(`Failed to get upload URL: ${res.status} ${errorText}`);
-      }
-      const response = await res.json() as { uploadURL: string };
-      console.log("✅ Got upload URL for:", file.name);
-      return {
-        method: "PUT" as const,
-        url: response.uploadURL,
-      };
-    } catch (error) {
-      console.error("❌ Upload parameter error:", error);
-      toast({
-        title: "Upload Error",
-        description: error instanceof Error ? error.message : "Failed to prepare upload",
-        variant: "destructive",
-      });
-      throw error;
-    }
-  };
-
   const handleUploadComplete = async (result: UploadResult<Record<string, unknown>, Record<string, unknown>>) => {
     console.log("📦 Upload complete callback triggered", result);
-    
+
     if (!result.successful || result.successful.length === 0) {
       console.error("❌ No successful uploads");
       toast({
@@ -189,7 +160,7 @@ export default function Dashboard() {
       url: file.uploadURL as string,
       filename: file.name || "unknown",
     }));
-    
+
     console.log("💾 Saving photos to database:", uploadedFiles);
     uploadPhotosMutation.mutate(uploadedFiles);
   };
@@ -320,7 +291,6 @@ export default function Dashboard() {
               <ObjectUploader
                 maxNumberOfFiles={10}
                 maxFileSize={10485760}
-                onGetUploadParameters={handleGetUploadParameters}
                 onComplete={handleUploadComplete}
                 buttonClassName="w-full sm:w-auto gap-2 min-h-[48px] sm:min-h-[40px]"
               >

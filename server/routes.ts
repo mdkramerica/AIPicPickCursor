@@ -1,6 +1,7 @@
 // Reference: blueprint:javascript_log_in_with_replit, blueprint:javascript_object_storage
 import type { Express } from "express";
 import { createServer, type Server } from "http";
+import multer from "multer";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated, syncUserToDatabase } from "./kindeAuth";
 import {
@@ -14,6 +15,14 @@ import { asyncHandler, AppError } from "./middleware/errorHandler";
 import { logger } from "./middleware/logger";
 import { authLimiter, analysisLimiter, uploadLimiter, apiLimiter } from "./middleware/rateLimiter";
 import { validateUUID } from "./middleware/security";
+
+// Configure multer for file uploads (store in memory)
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB limit
+  },
+});
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Setup Kinde authentication middleware
@@ -65,10 +74,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/objects/upload", uploadLimiter, isAuthenticated, asyncHandler(async (req, res) => {
+  // Direct file upload to R2 (no CORS issues)
+  app.post("/api/objects/upload", uploadLimiter, isAuthenticated, upload.single('file'), asyncHandler(async (req: any, res) => {
+    if (!req.file) {
+      throw new AppError(400, "No file uploaded");
+    }
+
     const r2Storage = new R2StorageService();
-    const { uploadURL, objectKey } = await r2Storage.getUploadURL();
-    res.json({ uploadURL, objectKey });
+    const { objectKey } = await r2Storage.uploadFile(req.file.buffer, req.file.mimetype);
+
+    // Return the object path that can be used to access the file
+    res.json({
+      objectKey,
+      fileUrl: `/objects/${objectKey}`
+    });
   }));
 
   // Photo Session routes
