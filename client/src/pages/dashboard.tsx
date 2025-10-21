@@ -526,6 +526,13 @@ export default function Dashboard() {
                 {photos.map((photo) => {
                   // Use presigned URL if available, fallback to original URL
                   const imageUrl = presignedUrls[photo.id] || photo.fileUrl;
+                  console.log(`🖼️ Rendering photo ${photo.id}:`, {
+                    photoId: photo.id,
+                    originalFileUrl: photo.fileUrl,
+                    hasPresignedUrl: !!presignedUrls[photo.id],
+                    finalImageUrl: imageUrl,
+                    presignedUrlPreview: imageUrl.substring(0, 100)
+                  });
                   return (
                   <Card key={photo.id} className="overflow-hidden" data-testid={`card-photo-${photo.id}`}>
                     <div className="aspect-square relative bg-muted">
@@ -533,6 +540,16 @@ export default function Dashboard() {
                         src={imageUrl}
                         alt={photo.originalFilename || "Photo"}
                         className="w-full h-full object-cover"
+                        onError={(e) => {
+                          console.error(`❌ Image failed to load for photo ${photo.id}:`, {
+                            photoId: photo.id,
+                            src: imageUrl,
+                            error: e
+                          });
+                        }}
+                        onLoad={() => {
+                          console.log(`✅ Image loaded successfully for photo ${photo.id}`);
+                        }}
                       />
                       {photo.isSelectedBest && (
                         <div className="absolute top-3 right-3">
