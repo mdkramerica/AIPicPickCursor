@@ -42,9 +42,8 @@ export function ObjectUploader({
         endpoint: '/api/objects/upload',
         fieldName: 'file',
         formData: true,
-        headers: {
-          // Credentials will be included automatically via cookies
-        },
+        withCredentials: true, // Include cookies for authentication
+        headers: {},
       })
       .on("upload", () => {
         console.log("🚀 Upload started");
