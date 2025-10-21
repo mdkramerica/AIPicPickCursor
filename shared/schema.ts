@@ -187,16 +187,21 @@ export const insertFaceSchema = createInsertSchema(faces).omit({
   createdAt: true,
 });
 
-export const insertConvertKitSettingsSchema = createInsertSchema(convertKitSettings).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
+export const insertConvertKitSettingsSchema = z.object({
+  userId: z.string(),
+  subscriberId: z.string().optional(),
+  emailConsent: z.boolean().default(false),
+  marketingConsent: z.boolean().default(false),
+  tags: z.array(z.string()).optional(),
+  unsubscribedAt: z.date().optional(),
 });
 
-export const insertEmailCampaignSchema = createInsertSchema(emailCampaigns).omit({
-  id: true,
-  createdAt: true,
-  sentAt: true,
+export const insertEmailCampaignSchema = z.object({
+  sessionId: z.string(),
+  campaignType: z.string().optional(),
+  convertKitBroadcastId: z.string().optional(),
+  status: z.string().default('pending'),
+  error: z.string().optional(),
 });
 
 // TypeScript types

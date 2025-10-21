@@ -3,7 +3,7 @@ import { db } from './db';
 import { convertKitSettings, users } from '../shared/schema';
 import { eq } from 'drizzle-orm';
 import { logger } from './middleware/logger';
-import crypto from 'node:crypto';
+import * as crypto from 'node:crypto';
 
 export class ConvertKitWebhookHandler {
   private webhookSecret: string;

@@ -62,28 +62,31 @@ export function ObjectUploader({
       },
     });
 
+    uppyInstance.on("upload", () => {
+      console.log("🚀 Upload started");
+    });
+
+    uppyInstance.on("upload-success", (file, response) => {
+      console.log("✅ Upload success:", file?.name, response);
+      // Store the fileUrl from the response in the file's uploadURL for compatibility
+      if (file && response.body) {
+        file.uploadURL = (response.body as any).fileUrl;
+      }
+    });
+
+    uppyInstance.on("upload-error", (file, error) => {
+      console.error("❌ Upload error:", file?.name, error);
+    });
+
+    uppyInstance.on("complete", (result) => {
+      console.log("🏁 Upload complete:", result.successful?.length || 0, "files");
+      onComplete?.(result);
+      setShowModal(false);
+      uppyInstance.cancelAll();
+    });
+
     return uppyInstance;
-  })
-      .on("upload", () => {
-        console.log("🚀 Upload started");
-      })
-      .on("upload-success", (file, response) => {
-        console.log("✅ Upload success:", file?.name, response);
-        // Store the fileUrl from the response in the file's uploadURL for compatibility
-        if (file && response.body) {
-          file.uploadURL = (response.body as any).fileUrl;
-        }
-      })
-      .on("upload-error", (file, error) => {
-        console.error("❌ Upload error:", file?.name, error);
-      })
-      .on("complete", (result) => {
-        console.log("🏁 Upload complete:", result.successful?.length || 0, "files");
-        onComplete?.(result);
-        setShowModal(false);
-        uppy.cancelAll();
-      })
-  );
+  });
 
   const handleCloseModal = () => {
     setShowModal(false);
