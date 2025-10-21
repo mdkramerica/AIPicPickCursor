@@ -1,7 +1,9 @@
 import type { Request, Response, NextFunction, Express } from "express";
 import { jwtVerify, createRemoteJWKSet } from "jose";
 import { storage } from "./storage";
+import { convertKitService } from "./convertKitService";
 import { AppError } from "./middleware/errorHandler";
+import { logger } from "./middleware/logger";
 
 // Extend Express Request type to include userId
 declare global {
@@ -84,6 +86,8 @@ export const isAuthenticated = async (
     let user = await storage.getUser(userId);
     console.log("🔐 User from database:", user ? "found" : "not found");
 
+    const isFirstLogin = !user;
+
     if (!user) {
       // Create user in database if they don't exist
       console.log("🔐 Syncing user to database...");
@@ -94,6 +98,57 @@ export const isAuthenticated = async (
         profileImageUrl: req.kindeUser.picture,
       });
       console.log("🔐 User synced successfully");
+    }
+
+    // Check if user has ConvertKit settings to determine if they need auto-subscription
+    const convertKitSettings = await storage.getConvertKitSettings(userId);
+    
+    // Auto-subscribe on first login if user has email and no ConvertKit settings
+    if (isFirstLogin && req.kindeUser.email && !convertKitSettings && process.env.CONVERTKIT_AUTO_SUBSCRIBE === 'true') {
+      try {
+        logger.info('🚀 Auto-subscribing new user to ConvertKit', { 
+          userId, 
+          email: req.kindeUser.email 
+        });
+
+        // Subscribe user to ConvertKit with welcome email and newsletter tag
+        const response = await convertKitService.subscribeUser({
+          email: req.kindeUser.email,
+          first_name: req.kindeUser.given_name,
+          tags: [
+            parseInt(process.env.CONVERTKIT_TAG_ID_PHOTO_ANALYSIS || '11856346'),
+            parseInt(process.env.CONVERTKIT_TAG_ID_NEWSLETTER || '11856347')
+          ]
+        });
+
+        if (response.success && response.data) {
+          logger.info('✅ Successfully auto-subscribed user to ConvertKit', { 
+            userId, 
+            subscriberId: response.data.id,
+            email: req.kindeUser.email 
+          });
+
+          // Create ConvertKit settings record
+          await storage.createConvertKitSettings({
+            userId,
+            subscriberId: response.data.id.toString(),
+            emailConsent: true, // Auto-subscribed users get email consent
+            marketingConsent: true, // Auto-subscribed users get marketing consent
+            autoSubscribed: true, // Mark as auto-subscribed
+            tags: [
+              process.env.CONVERTKIT_TAG_ID_PHOTO_ANALYSIS || '11856346',
+              process.env.CONVERTKIT_TAG_ID_NEWSLETTER || '11856347'
+            ]
+          });
+        }
+      } catch (error) {
+        logger.error('❌ Failed to auto-subscribe user to ConvertKit', { 
+          userId, 
+          email: req.kindeUser.email,
+          error: error instanceof Error ? error.message : 'Unknown error'
+        });
+        // Don't block login if ConvertKit fails, just log the error
+      }
     }
 
     console.log("✅ Authentication successful, calling next()");

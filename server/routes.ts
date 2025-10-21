@@ -95,6 +95,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
 
     try {
+      // Log the subscription attempt with sanitized data
+      logger.info('ConvertKit subscription attempt', { 
+        userId,
+        email,
+        firstName,
+        hasConsent: !!consent,
+        hasMarketingConsent: consent.marketing || false,
+        tagIds: [
+          parseInt(process.env.CONVERTKIT_TAG_ID_PHOTO_ANALYSIS || '0'),
+          parseInt(process.env.CONVERTKIT_TAG_ID_NEWSLETTER || '0'),
+        ].filter(id => id > 0),
+      });
+
       // Subscribe to ConvertKit
       const response = await convertKitService.subscribeUser({
         email,
@@ -105,6 +118,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ].filter(id => id > 0),
       });
 
+      logger.info('ConvertKit subscription response', {
+        userId,
+        email,
+        success: response.success,
+        subscriberId: response.data?.id,
+      });
+
       if (response.success) {
         // Store user's ConvertKit settings
         await storage.createConvertKitSettings({
@@ -112,19 +132,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
           subscriberId: response.data?.id.toString() || '',
           emailConsent: true,
           marketingConsent: consent.marketing || false,
+          autoSubscribed: false, // Manual subscription, not auto-subscribed
           tags: [
             process.env.CONVERTKIT_TAG_ID_PHOTO_ANALYSIS,
             process.env.CONVERTKIT_TAG_ID_NEWSLETTER,
           ].filter((tag): tag is string => Boolean(tag)),
         });
 
+        logger.info('ConvertKit settings saved to database', { userId });
+
         // Send welcome email
-        await convertKitService.sendPhotoAnalysisEmail({
-          sessionId: 'welcome',
-          campaignType: 'welcome',
-          userEmail: email,
-          userName: firstName,
-        });
+        try {
+          await convertKitService.sendPhotoAnalysisEmail({
+            sessionId: 'welcome',
+            campaignType: 'welcome',
+            userEmail: email,
+            userName: firstName,
+          });
+          logger.info('Welcome email sent', { userId, email });
+        } catch (emailError) {
+          // Don't fail the subscription if the welcome email fails
+          logger.error('Failed to send welcome email (non-fatal)', {
+            userId,
+            email,
+            error: emailError instanceof Error ? emailError.message : 'Unknown error',
+            stack: emailError instanceof Error ? emailError.stack : undefined,
+          });
+        }
       }
 
       res.json(response);
@@ -132,9 +166,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       logger.error('ConvertKit subscription failed', { 
         userId,
         email,
-        error: error instanceof Error ? error.message : 'Unknown error',
+        errorType: error instanceof Error ? error.constructor.name : typeof error,
+        errorMessage: error instanceof Error ? error.message : 'Unknown error',
+        errorStack: error instanceof Error ? error.stack : undefined,
+        errorDetails: error && typeof error === 'object' ? JSON.stringify(error, null, 2) : String(error),
       });
-      throw new AppError(500, "Failed to subscribe to email list");
+      
+      // Provide more specific error message to the client
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      throw new AppError(500, `Failed to subscribe to email list: ${errorMessage}`);
     }
   }));
 

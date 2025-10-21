@@ -28,6 +28,12 @@ class ConvertKitService {
     };
 
     try {
+      logger.info('ConvertKit API request', {
+        endpoint,
+        method: options.method || 'GET',
+        hasBody: !!options.body,
+      });
+
       const response = await fetch(url, {
         ...options,
         headers,
@@ -44,9 +50,24 @@ class ConvertKitService {
 
       const data = await response.json();
 
+      logger.info('ConvertKit API response', {
+        endpoint,
+        status: response.status,
+        ok: response.ok,
+        hasData: !!data,
+      });
+
       if (!response.ok) {
+        logger.error('ConvertKit API error response', {
+          endpoint,
+          status: response.status,
+          statusText: response.statusText,
+          errorData: data,
+          errorMessage: data.error || data.message,
+        });
+
         throw new ConvertKitError(
-          data.error || `HTTP ${response.status}: ${response.statusText}`,
+          data.error || data.message || `HTTP ${response.status}: ${response.statusText}`,
           response.status,
           data
         );
@@ -54,7 +75,7 @@ class ConvertKitService {
 
       return {
         success: true,
-        data: data.subscribers || data.tags || data.broadcasts || data,
+        data: data.subscription || data.subscribers || data.tags || data.broadcasts || data,
       };
     } catch (error) {
       if (error instanceof ConvertKitError) {
@@ -63,7 +84,10 @@ class ConvertKitService {
       
       logger.error('ConvertKit API request failed', {
         endpoint,
-        error: error instanceof Error ? error.message : 'Unknown error',
+        url,
+        errorType: error instanceof Error ? error.constructor.name : typeof error,
+        errorMessage: error instanceof Error ? error.message : 'Unknown error',
+        errorStack: error instanceof Error ? error.stack : undefined,
       });
 
       throw new ConvertKitError(
@@ -89,26 +113,89 @@ class ConvertKitService {
 
   // Subscriber Management
   async subscribeUser(request: ConvertKitSubscriptionRequest): Promise<ConvertKitApiResponse<ConvertKitSubscriber>> {
-    logger.info('Subscribing user to ConvertKit', { email: request.email });
-
-    const response = await this.makeRequest<ConvertKitSubscriber>('/subscribers', {
-      method: 'POST',
-      body: JSON.stringify({
-        api_secret: this.config.apiSecret,
-        ...request,
-      }),
+    logger.info('Subscribing user to ConvertKit', { 
+      email: request.email,
+      firstName: request.first_name,
+      tags: request.tags,
+      hasApiSecret: !!this.config.apiSecret,
+      apiSecretLength: this.config.apiSecret?.length || 0,
+      hasFormId: !!this.config.defaultFormId,
     });
 
-    if (response.success && response.data) {
-      // Store subscriber info in our database
-      await this.updateUserSettings(response.data.email, {
-        subscriberId: response.data.id.toString(),
-        emailConsent: true,
-        tags: request.tags?.map(tag => tag.toString()) || [],
-      });
+    // Validate API key is configured (needed for forms endpoint)
+    if (!this.config.apiKey) {
+      logger.error('ConvertKit API key not configured');
+      throw new Error('ConvertKit API key is not configured. Please set CONVERTKIT_API_KEY environment variable.');
     }
 
-    return response;
+    // Validate form ID is configured
+    if (!this.config.defaultFormId) {
+      logger.error('ConvertKit form ID not configured');
+      throw new Error('ConvertKit form ID is not configured. Please set CONVERTKIT_FORM_ID environment variable.');
+    }
+
+    try {
+      // Use the correct v3 API endpoint for subscribing to a form
+      // https://developers.kit.com/api-reference/v3/forms
+      const endpoint = `/forms/${this.config.defaultFormId}/subscribe`;
+      
+      const response = await this.makeRequest<any>(endpoint, {
+        method: 'POST',
+        body: JSON.stringify({
+          api_key: this.config.apiKey, // v3 forms endpoint uses api_key (public key)
+          email: request.email,
+          first_name: request.first_name,
+          tags: request.tags,
+          fields: request.fields || {},
+        }),
+      });
+
+      if (response.success && response.data) {
+        // The forms endpoint returns { subscription: { subscriber: { id } } }
+        const subscriberId = response.data.subscriber?.id;
+        
+        logger.info('ConvertKit subscription successful', {
+          email: request.email,
+          subscriberId,
+          state: response.data.state,
+          subscriptionId: response.data.id,
+        });
+
+        if (subscriberId) {
+          // Store subscriber info in our database
+          await this.updateUserSettings(request.email, {
+            subscriberId: subscriberId.toString(),
+            emailConsent: true,
+            tags: request.tags?.map(tag => tag.toString()) || [],
+          });
+        }
+        
+        // Transform the response to match the expected ConvertKitSubscriber format
+        const transformedResponse: ConvertKitApiResponse<ConvertKitSubscriber> = {
+          success: true,
+          data: {
+            id: subscriberId,
+            email: request.email,
+            first_name: request.first_name,
+            state: response.data.state,
+            created_at: response.data.created_at,
+            fields: request.fields,
+          } as ConvertKitSubscriber,
+        };
+        
+        return transformedResponse;
+      }
+
+      return response;
+    } catch (error) {
+      logger.error('ConvertKit subscribeUser error', {
+        email: request.email,
+        errorType: error instanceof Error ? error.constructor.name : typeof error,
+        errorMessage: error instanceof Error ? error.message : 'Unknown error',
+        errorStack: error instanceof Error ? error.stack : undefined,
+      });
+      throw error;
+    }
   }
 
   async getSubscriber(subscriberId: string): Promise<ConvertKitApiResponse<ConvertKitSubscriber>> {

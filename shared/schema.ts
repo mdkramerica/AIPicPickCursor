@@ -105,6 +105,7 @@ export const convertKitSettings = pgTable("convertkit_settings", {
   subscriberId: varchar("subscriber_id"), // ConvertKit subscriber ID
   emailConsent: boolean("email_consent").default(false),
   marketingConsent: boolean("marketing_consent").default(false),
+  autoSubscribed: boolean("auto_subscribed").default(false), // Track if user was auto-subscribed
   tags: text("tags").array(), // Array of ConvertKit tag IDs
   unsubscribedAt: timestamp("unsubscribed_at"),
   createdAt: timestamp("created_at").defaultNow(),
@@ -255,6 +256,7 @@ export const insertConvertKitSettingsSchema = z.object({
   subscriberId: z.string().optional(),
   emailConsent: z.boolean().default(false),
   marketingConsent: z.boolean().default(false),
+  autoSubscribed: z.boolean().default(false),
   tags: z.array(z.string()).optional(),
   unsubscribedAt: z.date().optional(),
 });

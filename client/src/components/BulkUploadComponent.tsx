@@ -5,6 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { useKindeAuth } from "@kinde-oss/kinde-auth-react";
 
 export interface UploadProgress {
   totalFiles: number;
@@ -49,6 +50,7 @@ export default function BulkUploadComponent({
   onUploadComplete,
   onError
 }: BulkUploadProps) {
+  const { getToken } = useKindeAuth();
   const [files, setFiles] = useState<QueuedFile[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -159,19 +161,28 @@ export default function BulkUploadComponent({
     formData.append('sessionId', sessionId);
 
     try {
+      // Get JWT token for authentication
+      const token = await getToken();
+      console.log('🔑 Bulk upload token:', token ? `${token.substring(0, 20)}...` : 'NO TOKEN');
+
       const response = await fetch('/api/objects/upload', {
         method: 'POST',
         body: formData,
         headers: {
-          // Note: Authorization headers will be added by the existing auth system
+          // Use JWT Bearer token like other components
+          'Authorization': token ? `Bearer ${token}` : '',
+          // Don't set Content-Type for FormData, browser does it automatically
         }
       });
 
       if (!response.ok) {
-        throw new Error(`Upload failed: ${response.statusText}`);
+        const errorText = await response.text();
+        console.error('❌ Upload failed response:', errorText);
+        throw new Error(`Upload failed (${response.status}): ${errorText}`);
       }
 
       const result = await response.json();
+      console.log('✅ Upload successful for:', queuedFile.file.name, result);
       return {
         file: queuedFile.file,
         url: result.fileUrl,
@@ -179,6 +190,7 @@ export default function BulkUploadComponent({
         success: true
       };
     } catch (error) {
+      console.error('Upload error for file:', queuedFile.file.name, error);
       return {
         file: queuedFile.file,
         url: '',

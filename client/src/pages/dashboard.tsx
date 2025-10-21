@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useLocation, Link, navigate } from "wouter";
+import { useLocation, Link } from "wouter";
 import { Sparkles, Upload, LogOut, Eye, Smile, Loader2, Image as ImageIcon, Download, Images, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardContent, CardFooter } from "@/components/ui/card";
@@ -170,7 +170,7 @@ export default function Dashboard() {
   });
 
   // Navigate to results
-  const [, navigate] = useLocation();
+  const [, setLocation] = useLocation();
 
   // Analyze session mutation with polling-based progress tracking
   const analyzeSessionMutation = useMutation({
@@ -230,7 +230,7 @@ export default function Dashboard() {
         title: "Analysis Complete",
         description: "Your photos have been analyzed!",
       });
-      navigate(`/session/${sessionId}/compare`);
+      setLocation(`/session/${sessionId}/compare`);
     },
     onError: (error: Error) => {
       // Clear polling interval
@@ -422,7 +422,7 @@ export default function Dashboard() {
             </Button>
             <Button 
               variant="outline"
-              onClick={() => navigate("/bulk-upload")}
+              onClick={() => setLocation("/bulk-upload")}
               size="lg"
               data-testid="button-bulk-upload"
               className="w-full sm:w-auto min-h-[48px] sm:min-h-[40px]"
@@ -519,7 +519,7 @@ export default function Dashboard() {
                 {currentSession?.status === 'completed' && photos && photos.length > 0 && (
                   <Button 
                     variant="outline"
-                    onClick={() => navigate(`/session/${selectedSession}/compare`)}
+                    onClick={() => setLocation(`/session/${selectedSession}/compare`)}
                     data-testid="button-view-comparison"
                     className="hidden sm:flex"
                   >
@@ -659,7 +659,7 @@ export default function Dashboard() {
           {currentSession?.status === 'completed' ? (
             <Button 
               variant="outline"
-              onClick={() => navigate(`/session/${selectedSession}/compare`)}
+              onClick={() => setLocation(`/session/${selectedSession}/compare`)}
               data-testid="button-view-comparison-mobile"
               className="w-full min-h-[52px] text-base"
             >
