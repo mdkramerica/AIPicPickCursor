@@ -34,7 +34,7 @@ export const securityHeaders = (req: Request, res: Response, next: NextFunction)
         "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.kinde.com",
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://*.kinde.com",
         "font-src 'self' data: https://fonts.gstatic.com",
-        "connect-src 'self' https://*.kinde.com",
+        "connect-src 'self' https://*.kinde.com https://*.r2.cloudflarestorage.com",
         "frame-src https://*.kinde.com",
         "worker-src 'self' blob:",
         "child-src 'self' blob:",
