@@ -1,7 +1,8 @@
 import { createCanvas, loadImage, Canvas, Image } from 'canvas';
-import { ObjectStorageService } from './objectStorage.js';
-import { objectStorageClient } from './objectStorage.js';
+import { R2StorageService } from './r2Storage.js';
+import { GetObjectCommand } from '@aws-sdk/client-s3';
 import path from 'path';
+import heicConvert from 'heic-convert';
 
 /**
  * Load image from URL (object storage path) and return canvas image
@@ -11,20 +12,30 @@ export async function loadImageFromUrl(url: string): Promise<Image> {
     let buffer: Buffer;
     let contentType: string | undefined;
 
-    // If it's an /objects/ path, get it from object storage
+    // If it's an /objects/ path, get it from R2 storage
     if (url.startsWith('/objects/')) {
-      const objectStorageService = new ObjectStorageService();
-      const file = await objectStorageService.getObjectEntityFile(url);
-      
-      // Get metadata for content type
-      const [metadata] = await file.getMetadata();
-      contentType = metadata.contentType;
-      
-      // Download the file content
-      const [bufferData] = await file.download();
-      buffer = bufferData;
-      
-      console.log(`Image loaded: ${url}, size: ${buffer.length} bytes, type: ${contentType}`);
+      const r2Storage = new R2StorageService();
+      const objectKey = r2Storage.getObjectKeyFromPath(url);
+
+      console.log(`Loading image from R2: ${objectKey}`);
+
+      // Get object from R2
+      const command = new GetObjectCommand({
+        Bucket: process.env.R2_BUCKET_NAME,
+        Key: objectKey,
+      });
+
+      const response = await (r2Storage as any).s3Client.send(command);
+      contentType = response.ContentType;
+
+      // Convert stream to buffer
+      const chunks: Uint8Array[] = [];
+      for await (const chunk of response.Body as any) {
+        chunks.push(chunk);
+      }
+      buffer = Buffer.concat(chunks);
+
+      console.log(`Image loaded from R2: ${objectKey}, size: ${buffer.length} bytes, type: ${contentType}`);
     } else {
       // For external URLs, use fetch
       const response = await fetch(url);
@@ -41,6 +52,23 @@ export async function loadImageFromUrl(url: string): Promise<Image> {
     if (!isValid) {
       console.error(`Invalid image format for ${url}. Content-Type: ${contentType}, Buffer length: ${buffer.length}, First bytes: ${buffer.slice(0, 8).toString('hex')}`);
       throw new Error(`Unsupported image format. Content-Type: ${contentType || 'unknown'}, detected as non-image`);
+    }
+
+    // Convert HEIC/HEIF to JPEG if necessary
+    if (contentType?.includes('heic') || contentType?.includes('heif') || isHEICFormat(buffer)) {
+      console.log(`Converting HEIC/HEIF image to JPEG: ${url}`);
+      try {
+        const outputBuffer = await heicConvert({
+          buffer: buffer,
+          format: 'JPEG',
+          quality: 0.92
+        });
+        buffer = Buffer.from(outputBuffer);
+        console.log(`HEIC conversion successful, new size: ${buffer.length} bytes`);
+      } catch (conversionError) {
+        console.error(`HEIC conversion failed for ${url}:`, conversionError);
+        throw new Error(`Failed to convert HEIC image: ${conversionError instanceof Error ? conversionError.message : 'Unknown error'}`);
+      }
     }
 
     // Load image with canvas
@@ -61,12 +89,30 @@ export async function loadImageFromUrl(url: string): Promise<Image> {
 }
 
 /**
+ * Check if buffer is HEIC/HEIF format
+ */
+function isHEICFormat(buffer: Buffer): boolean {
+  if (buffer.length < 12) return false;
+
+  // HEIC files start with: 00 00 00 XX 66 74 79 70 (where XX is size, ftyp is the box type)
+  const ftypSignature = buffer.toString('ascii', 4, 8);
+  if (ftypSignature === 'ftyp') {
+    const brand = buffer.toString('ascii', 8, 12);
+    return brand.startsWith('heic') || brand.startsWith('heix') ||
+           brand.startsWith('hevc') || brand.startsWith('hevx') ||
+           brand.startsWith('mif1') || brand.startsWith('msf1');
+  }
+
+  return false;
+}
+
+/**
  * Check if buffer contains a valid image format
  */
 function isValidImageFormat(buffer: Buffer, contentType?: string): boolean {
   // Check by content type
   if (contentType) {
-    const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/bmp', 'image/webp'];
+    const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/bmp', 'image/webp', 'image/heic', 'image/heif'];
     if (validTypes.some(type => contentType.includes(type))) {
       return true;
     }
@@ -99,6 +145,20 @@ function isValidImageFormat(buffer: Buffer, contentType?: string): boolean {
   if (buffer[0] === 0x52 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x46) {
     if (buffer.length >= 12 && buffer[8] === 0x57 && buffer[9] === 0x45 && buffer[10] === 0x42 && buffer[11] === 0x50) {
       return true;
+    }
+  }
+
+  // HEIC/HEIF: Check for ftyp box at offset 4-8
+  // HEIC files start with: 00 00 00 XX 66 74 79 70 (where XX is size, ftyp is the box type)
+  if (buffer.length >= 12) {
+    const ftypSignature = buffer.toString('ascii', 4, 8);
+    if (ftypSignature === 'ftyp') {
+      // Check for HEIC/HEIF brand
+      const brand = buffer.toString('ascii', 8, 12);
+      if (brand.startsWith('heic') || brand.startsWith('heix') || brand.startsWith('hevc') ||
+          brand.startsWith('hevx') || brand.startsWith('mif1') || brand.startsWith('msf1')) {
+        return true;
+      }
     }
   }
 
