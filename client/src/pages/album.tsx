@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Trash2, Images, LogOut, Home } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { PhotoSession, Photo } from "@shared/schema";
 import { useKindeAuth } from "@kinde-oss/kinde-auth-react";
 
@@ -50,6 +50,7 @@ export default function Album() {
   const { toast } = useToast();
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [photoToDelete, setPhotoToDelete] = useState<string | null>(null);
+  const [presignedUrls, setPresignedUrls] = useState<Record<string, string>>({});
 
   // Fetch album data
   const { data: album, isLoading } = useQuery<AlbumItem[]>({
@@ -61,6 +62,33 @@ export default function Album() {
     queryKey: ["/api/sessions", selectedSessionId, "photos"],
     enabled: !!selectedSessionId,
   });
+
+  // Fetch presigned URLs for selected session
+  const { data: presignedData } = useQuery<{
+    photos: Array<{ photoId: string; presignedUrl: string | null }>;
+  }>({
+    queryKey: ["/api/sessions", selectedSessionId, "photos/presigned-urls"],
+    enabled: !!selectedSessionId && !!user,
+  });
+
+  // Update presignedUrls when data arrives
+  useEffect(() => {
+    if (presignedData?.photos) {
+      const urlMap: Record<string, string> = {};
+      presignedData.photos.forEach((item) => {
+        if (item.presignedUrl) {
+          urlMap[item.photoId] = item.presignedUrl;
+        }
+      });
+      setPresignedUrls(urlMap);
+      console.log('📸 Album: Loaded presigned URLs for', Object.keys(urlMap).length, 'photos');
+    }
+  }, [presignedData]);
+
+  // Helper function to get image URL with presigned URL fallback
+  const getImageUrl = (photo: Photo) => {
+    return presignedUrls[photo.id] || photo.fileUrl;
+  };
 
   // Delete photo mutation
   const deletePhotoMutation = useMutation({
@@ -191,7 +219,7 @@ export default function Album() {
               >
                 <div className="aspect-square relative">
                   <img
-                    src={bestPhoto.fileUrl}
+                    src={getImageUrl(bestPhoto)}
                     alt={session.name || "Best photo"}
                     className="w-full h-full object-cover"
                     data-testid={`img-best-${session.id}`}
@@ -232,7 +260,7 @@ export default function Album() {
                 <Card key={photo.id} className={photo.isSelectedBest ? "border-primary border-2" : ""} data-testid={`card-photo-${photo.id}`}>
                   <div className="aspect-square relative">
                     <img
-                      src={photo.fileUrl}
+                      src={getImageUrl(photo)}
                       alt={photo.originalFilename || "Photo"}
                       className="w-full h-full object-cover rounded-t-md"
                       data-testid={`img-photo-${photo.id}`}
