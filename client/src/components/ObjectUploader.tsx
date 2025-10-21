@@ -40,7 +40,7 @@ export function ObjectUploader({
         maxFileSize,
         allowedFileTypes: ['image/*'],
       },
-      autoProceed: true, // Auto-upload when files are added!
+      autoProceed: false, // DON'T auto-upload - we need to get token first!
       meta: {
         type: 'photo'
       },
@@ -50,16 +50,37 @@ export function ObjectUploader({
       endpoint: '/api/objects/upload',
       fieldName: 'file',
       formData: true,
-      headers: (file) => {
-        // Get the access token from Kinde (synchronously via ref)
+      headers: {}, // Will be set dynamically before upload
+    });
+
+    // When files are added, get token and update headers, then upload
+    uppyInstance.on("files-added", async (files) => {
+      console.log("📁 Files added:", files.length);
+      try {
         console.log("🔑 Getting token for upload...");
-        return getTokenRef.current().then(token => {
-          console.log("🔑 Token retrieved:", token ? `${token.substring(0, 20)}...` : 'NO TOKEN');
-          return {
-            'Authorization': token ? `Bearer ${token}` : '',
-          };
-        });
-      },
+        const token = await getTokenRef.current();
+        console.log("🔑 Token retrieved:", token ? `${token.substring(0, 20)}...` : 'NO TOKEN');
+
+        // Update XHRUpload headers with fresh token
+        const xhrPlugin = uppyInstance.getPlugin('XHRUpload');
+        if (xhrPlugin && token) {
+          xhrPlugin.setOptions({
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
+          });
+          console.log("✅ Authorization header set, starting upload...");
+
+          // Now trigger the upload
+          uppyInstance.upload();
+        } else {
+          console.error("❌ No token or XHR plugin not found");
+          uppyInstance.info("Authentication failed - please refresh and try again", "error", 5000);
+        }
+      } catch (error) {
+        console.error("❌ Error getting token:", error);
+        uppyInstance.info("Failed to get authentication token", "error", 5000);
+      }
     });
 
     uppyInstance.on("upload", () => {
