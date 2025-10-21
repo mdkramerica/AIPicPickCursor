@@ -25,20 +25,22 @@ if (!KINDE_DOMAIN || !KINDE_CLIENT_ID) {
 
 // Component to set up token getter for API requests
 function TokenSetup() {
-  const { getToken } = useKindeAuth();
+  const { getToken, isAuthenticated } = useKindeAuth();
 
   useEffect(() => {
     // Set the token getter function for all API requests
     setTokenGetter(async () => {
       try {
+        console.log("🔑 TokenSetup: Getting token, isAuthenticated:", isAuthenticated);
         const token = await getToken();
+        console.log("🔑 TokenSetup: Got token:", token ? `${token.substring(0, 20)}...` : "null");
         return token || null;
       } catch (error) {
-        console.error("Error getting Kinde token:", error);
+        console.error("❌ Error getting Kinde token:", error);
         return null;
       }
     });
-  }, [getToken]);
+  }, [getToken, isAuthenticated]);
 
   return null;
 }

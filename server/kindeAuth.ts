@@ -20,7 +20,6 @@ declare global {
 }
 
 const KINDE_DOMAIN = process.env.KINDE_DOMAIN;
-const KINDE_AUDIENCE = process.env.KINDE_REDIRECT_URL; // Usually same as redirect URL
 
 if (!KINDE_DOMAIN) {
   throw new Error("KINDE_DOMAIN environment variable is required");
@@ -42,22 +41,30 @@ export const isAuthenticated = async (
     // Get token from Authorization header
     const authHeader = req.headers.authorization;
 
+    console.log("🔐 Auth check - Header present:", !!authHeader);
+
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      console.log("❌ Auth failed: No authorization token");
       throw new AppError(401, "No authorization token provided");
     }
 
     const token = authHeader.substring(7); // Remove "Bearer " prefix
+    console.log("🔐 Auth check - Token received:", token.substring(0, 20) + "...");
 
     // Verify JWT token with Kinde's public keys
+    // Note: Kinde tokens for PKCE flow don't have an audience claim, so we only verify issuer
+    console.log("🔐 Verifying JWT with issuer:", KINDE_DOMAIN);
     const { payload } = await jwtVerify(token, JWKS, {
       issuer: KINDE_DOMAIN,
-      audience: KINDE_AUDIENCE,
     });
+    console.log("✅ JWT verified successfully, user:", payload.sub);
 
     // Extract user information from token
     const userId = payload.sub;
+    console.log("🔐 Extracted userId:", userId);
 
     if (!userId) {
+      console.log("❌ No userId in token");
       throw new AppError(401, "Invalid token: missing user ID");
     }
 
@@ -70,27 +77,34 @@ export const isAuthenticated = async (
       family_name: payload.family_name as string | undefined,
       picture: payload.picture as string | undefined,
     };
+    console.log("🔐 Kinde user data:", req.kindeUser);
 
     // Ensure user exists in database
+    console.log("🔐 Checking if user exists in database...");
     let user = await storage.getUser(userId);
+    console.log("🔐 User from database:", user ? "found" : "not found");
 
     if (!user) {
       // Create user in database if they don't exist
+      console.log("🔐 Syncing user to database...");
       await syncUserToDatabase(userId, {
         email: req.kindeUser.email,
         firstName: req.kindeUser.given_name,
         lastName: req.kindeUser.family_name,
         profileImageUrl: req.kindeUser.picture,
       });
+      console.log("🔐 User synced successfully");
     }
 
+    console.log("✅ Authentication successful, calling next()");
     next();
   } catch (error) {
     if (error instanceof AppError) {
+      console.log("❌ AppError caught:", error.message);
       return res.status(error.statusCode).json({ message: error.message });
     }
 
-    console.error("Authentication error:", error);
+    console.error("❌ Authentication error:", error);
     return res.status(401).json({ message: "Invalid or expired token" });
   }
 };
