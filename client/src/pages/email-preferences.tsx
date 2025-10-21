@@ -7,11 +7,13 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { NewsletterSignup } from "@/components/NewsletterSignup";
-import { Mail, Bell, Info, Loader2 } from "lucide-react";
+import { Mail, Bell, Info, Loader2, ArrowLeft } from "lucide-react";
+import { useLocation } from "wouter";
 
 export default function EmailPreferences() {
   const { user } = useAuth();
   const { settings, isLoading, updateSettings, isUpdating, isSubscribed } = useConvertKit();
+  const [, setLocation] = useLocation();
 
   if (isLoading) {
     return (
@@ -27,6 +29,17 @@ export default function EmailPreferences() {
   if (!isSubscribed || !settings) {
     return (
       <div className="container max-w-2xl mx-auto py-8 space-y-6">
+        <div className="flex items-center gap-4 mb-6">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setLocation("/dashboard")}
+            className="flex items-center gap-2"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back to Dashboard
+          </Button>
+        </div>
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Email Preferences</h1>
           <p className="text-muted-foreground mt-2">
@@ -42,6 +55,17 @@ export default function EmailPreferences() {
   // If subscribed, show preferences
   return (
     <div className="container max-w-2xl mx-auto py-8 space-y-6">
+      <div className="flex items-center gap-4 mb-6">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setLocation("/dashboard")}
+          className="flex items-center gap-2"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Back to Dashboard
+        </Button>
+      </div>
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Email Preferences</h1>
         <p className="text-muted-foreground mt-2">

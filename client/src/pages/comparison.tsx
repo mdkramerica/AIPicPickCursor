@@ -71,79 +71,143 @@ export default function Comparison() {
   }, [presignedData]);
 
   const sharePhoto = async (photoUrl: string, filename: string) => {
-    if (!navigator.share) {
+    setIsSharing(true);
+    
+    try {
+      // First try Web Share API with file sharing
+      if (navigator.share && navigator.canShare && navigator.canShare({ files: [] })) {
+        try {
+          // Fetch the image as a blob
+          const response = await fetch(photoUrl, { mode: 'cors' });
+          if (!response.ok) {
+            throw new Error(`Failed to fetch image: ${response.status}`);
+          }
+          const blob = await response.blob();
+          
+          // Create an image bitmap with proper orientation handling
+          // 'from-image' respects EXIF orientation data
+          const imageBitmap = await createImageBitmap(blob, {
+            imageOrientation: 'from-image'
+          });
+          
+          // Create a canvas and draw the properly oriented image
+          const canvas = document.createElement('canvas');
+          canvas.width = imageBitmap.width;
+          canvas.height = imageBitmap.height;
+          const ctx = canvas.getContext('2d');
+          
+          if (!ctx) {
+            throw new Error('Could not get canvas context');
+          }
+          
+          // Draw the image with proper orientation
+          ctx.drawImage(imageBitmap, 0, 0);
+          
+          // Convert canvas to blob with high quality
+          const orientedBlob = await new Promise<Blob>((resolve, reject) => {
+            canvas.toBlob(
+              (blob) => {
+                if (blob) {
+                  resolve(blob);
+                } else {
+                  reject(new Error('Failed to create blob from canvas'));
+                }
+              },
+              'image/jpeg',
+              0.95 // High quality
+            );
+          });
+          
+          // Create a file from the oriented blob
+          const file = new File([orientedBlob], filename, { type: 'image/jpeg' });
+
+          // Check if we can share files
+          if (navigator.canShare({ files: [file] })) {
+            await navigator.share({
+              files: [file],
+              title: 'Best Group Photo',
+              text: 'Check out this photo selected by AI!',
+            });
+          } else {
+            // Fallback to URL sharing
+            await navigator.share({
+              title: 'Best Group Photo',
+              text: 'Check out this photo selected by AI!',
+              url: window.location.href,
+            });
+          }
+
+          toast({
+            title: "Shared successfully!",
+            description: "Photo shared via your selected app",
+          });
+          return;
+        } catch (shareError) {
+          console.warn('Web Share API failed, trying fallback:', shareError);
+          // Fall through to fallback methods
+        }
+      }
+
+      // Fallback 1: Try basic Web Share API without files
+      if (navigator.share) {
+        try {
+          await navigator.share({
+            title: 'Best Group Photo',
+            text: 'Check out this photo selected by AI!',
+            url: window.location.href,
+          });
+          
+          toast({
+            title: "Shared successfully!",
+            description: "Link shared via your selected app",
+          });
+          return;
+        } catch (basicShareError) {
+          console.warn('Basic Web Share API failed:', basicShareError);
+        }
+      }
+
+      // Fallback 2: Copy image URL to clipboard
+      try {
+        await navigator.clipboard.writeText(window.location.href);
+        toast({
+          title: "Link copied!",
+          description: "Photo page link copied to clipboard. Share it with your friends!",
+        });
+      } catch (clipboardError) {
+        console.warn('Clipboard access failed:', clipboardError);
+        
+        // Fallback 3: Download the image
+        try {
+          const response = await fetch(photoUrl, { mode: 'cors' });
+          if (!response.ok) {
+            throw new Error(`Failed to fetch image: ${response.status}`);
+          }
+          const blob = await response.blob();
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = filename;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          
+          toast({
+            title: "Download started!",
+            description: "Photo downloaded for sharing",
+          });
+        } catch (downloadError) {
+          throw new Error('All sharing methods failed. Please try again.');
+        }
+      }
+    } catch (error) {
+      console.error('Share error:', error);
       toast({
-        title: "Sharing not supported",
-        description: "Your browser doesn't support native sharing. Try using a mobile browser.",
+        title: "Sharing failed",
+        description: error instanceof Error ? error.message : "Could not share the photo. Please try again.",
         variant: "destructive",
       });
-      return;
-    }
-
-    setIsSharing(true);
-    try {
-      // Fetch the image as a blob
-      const response = await fetch(photoUrl);
-      const blob = await response.blob();
-      
-      // Create an image bitmap with proper orientation handling
-      // 'from-image' respects EXIF orientation data
-      const imageBitmap = await createImageBitmap(blob, {
-        imageOrientation: 'from-image'
-      });
-      
-      // Create a canvas and draw the properly oriented image
-      const canvas = document.createElement('canvas');
-      canvas.width = imageBitmap.width;
-      canvas.height = imageBitmap.height;
-      const ctx = canvas.getContext('2d');
-      
-      if (!ctx) {
-        throw new Error('Could not get canvas context');
-      }
-      
-      // Draw the image with proper orientation
-      ctx.drawImage(imageBitmap, 0, 0);
-      
-      // Convert canvas to blob with high quality
-      const orientedBlob = await new Promise<Blob>((resolve, reject) => {
-        canvas.toBlob(
-          (blob) => {
-            if (blob) {
-              resolve(blob);
-            } else {
-              reject(new Error('Failed to create blob from canvas'));
-            }
-          },
-          'image/jpeg',
-          0.95 // High quality
-        );
-      });
-      
-      // Create a file from the oriented blob
-      const file = new File([orientedBlob], filename, { type: 'image/jpeg' });
-
-      // Use the Web Share API
-      await navigator.share({
-        files: [file],
-        title: 'Best Group Photo',
-        text: 'Check out this photo selected by AI!',
-      });
-
-      toast({
-        title: "Shared successfully!",
-        description: "Photo shared via your selected app",
-      });
-    } catch (error) {
-      // User cancelled or error occurred
-      if (error instanceof Error && error.name !== 'AbortError') {
-        console.error('Share error:', error);
-        toast({
-          title: "Sharing failed",
-          description: "Could not share the photo. Please try again.",
-          variant: "destructive",
-        });
-      }
     } finally {
       setIsSharing(false);
     }

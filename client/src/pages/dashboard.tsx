@@ -12,6 +12,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { isUnauthorizedError } from "@/lib/authUtils";
+import ProfileDropdown from "@/components/ProfileDropdown";
 import { useConvertKit } from "@/hooks/useConvertKit";
 import { NewsletterSignup } from "@/components/NewsletterSignup";
 import type { UploadResult } from "@uppy/core";
@@ -363,12 +364,6 @@ export default function Dashboard() {
                 <span className="hidden sm:inline ml-2">Album</span>
               </Link>
             </Button>
-            <Button variant="ghost" size="sm" asChild data-testid="button-email-preferences" className="min-h-[44px]">
-              <Link href="/email-preferences">
-                <Settings className="h-4 w-4" />
-                <span className="hidden sm:inline ml-2">Email</span>
-              </Link>
-            </Button>
             {selectedSession && canAnalyze && (
               <Button 
                 onClick={() => analyzeSessionMutation.mutate(selectedSession)}
@@ -384,17 +379,7 @@ export default function Dashboard() {
                 {analyzeSessionMutation.isPending ? 'Analyzing...' : 'Analyze Photos'}
               </Button>
             )}
-            {user && user.profileImageUrl && (
-              <img 
-                src={user.profileImageUrl} 
-                alt={user.firstName || "User"} 
-                className="h-8 w-8 rounded-full object-cover"
-              />
-            )}
-            <Button onClick={() => logout()} variant="ghost" size="sm" data-testid="button-logout" className="min-h-[44px]">
-              <LogOut className="h-4 w-4" />
-              <span className="hidden sm:inline ml-2">Sign Out</span>
-            </Button>
+            <ProfileDropdown />
           </div>
         </div>
       </header>
