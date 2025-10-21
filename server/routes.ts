@@ -10,7 +10,10 @@ import {
 } from "./r2Storage";
 import { ObjectPermission } from "./objectAcl";
 import { photoAnalysisService } from "./photoAnalysis";
-import { insertPhotoSessionSchema, insertPhotoSchema } from "@shared/schema";
+import { convertKitService } from "./convertKitService";
+import { convertKitWebhookHandler, parseWebhookBody, isValidWebhookEvent } from "./convertKitWebhooks";
+import { insertPhotoSessionSchema, insertPhotoSchema, insertConvertKitSettingsSchema } from "@shared/schema";
+import { z } from "zod";
 import { asyncHandler, AppError } from "./middleware/errorHandler";
 import { logger } from "./middleware/logger";
 import { authLimiter, analysisLimiter, uploadLimiter, apiLimiter } from "./middleware/rateLimiter";
@@ -44,6 +47,177 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
 
     res.json(user);
+  }));
+
+  // ConvertKit webhook endpoint
+  app.post('/api/webhooks/convertkit', asyncHandler(async (req, res) => {
+    try {
+      const signature = req.headers['x-convertkit-signature'] as string;
+      const body = req.body;
+
+      // Verify webhook signature
+      if (!convertKitWebhookHandler.verifySignature(JSON.stringify(body), signature)) {
+        throw new AppError(401, "Invalid webhook signature");
+      }
+
+      // Parse and validate webhook event
+      const event = parseWebhookBody(JSON.stringify(body));
+      if (!event || !isValidWebhookEvent(event)) {
+        throw new AppError(400, "Invalid webhook event");
+      }
+
+      // Handle the webhook event
+      await convertKitWebhookHandler.handleWebhook(event);
+
+      res.json({ success: true });
+    } catch (error) {
+      logger.error('ConvertKit webhook error', { 
+        error: error instanceof Error ? error.message : 'Unknown error',
+        body: req.body,
+      });
+      throw error;
+    }
+  }));
+
+  // ConvertKit API routes
+  app.post('/api/convertkit/subscribe', apiLimiter, isAuthenticated, asyncHandler(async (req: any, res) => {
+    const userId = req.userId;
+    const { email, firstName, consent } = req.body;
+
+    if (!email) {
+      throw new AppError(400, "Email is required");
+    }
+
+    if (!consent) {
+      throw new AppError(400, "Email consent is required");
+    }
+
+    try {
+      // Subscribe to ConvertKit
+      const response = await convertKitService.subscribeUser({
+        email,
+        first_name: firstName,
+        tags: [
+          parseInt(process.env.CONVERTKIT_TAG_ID_PHOTO_ANALYSIS || '0'),
+          parseInt(process.env.CONVERTKIT_TAG_ID_NEWSLETTER || '0'),
+        ].filter(id => id > 0),
+      });
+
+      if (response.success) {
+        // Store user's ConvertKit settings
+        await storage.createConvertKitSettings({
+          userId,
+          subscriberId: response.data?.id.toString() || '',
+          emailConsent: true,
+          marketingConsent: consent.marketing || false,
+          tags: [
+            process.env.CONVERTKIT_TAG_ID_PHOTO_ANALYSIS,
+            process.env.CONVERTKIT_TAG_ID_NEWSLETTER,
+          ].filter(Boolean),
+        });
+
+        // Send welcome email
+        await convertKitService.sendPhotoAnalysisEmail({
+          sessionId: 'welcome',
+          campaignType: 'welcome',
+          userEmail: email,
+          userName: firstName,
+        });
+      }
+
+      res.json(response);
+    } catch (error) {
+      logger.error('ConvertKit subscription failed', { 
+        userId,
+        email,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+      throw new AppError(500, "Failed to subscribe to email list");
+    }
+  }));
+
+  app.get('/api/convertkit/settings', apiLimiter, isAuthenticated, asyncHandler(async (req: any, res) => {
+    const userId = req.userId;
+    const settings = await storage.getConvertKitSettings(userId);
+    res.json(settings || null);
+  }));
+
+  app.patch('/api/convertkit/settings', apiLimiter, isAuthenticated, asyncHandler(async (req: any, res) => {
+    const userId = req.userId;
+    const { emailConsent, marketingConsent } = req.body;
+
+    const settings = await storage.updateConvertKitSettings(userId, {
+      emailConsent,
+      marketingConsent,
+    });
+
+    // If user unsubscribes, update ConvertKit
+    if (!emailConsent && settings?.subscriberId) {
+      try {
+        await convertKitService.unsubscribeSubscriber(settings.subscriberId);
+      } catch (error) {
+        logger.error('Failed to unsubscribe from ConvertKit', { 
+          userId,
+          subscriberId: settings.subscriberId,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    }
+
+    res.json(settings);
+  }));
+
+  app.post('/api/convertkit/send-analysis-email', apiLimiter, isAuthenticated, asyncHandler(async (req: any, res) => {
+    const userId = req.userId;
+    const { sessionId, campaignType } = req.body;
+
+    if (!sessionId) {
+      throw new AppError(400, "Session ID is required");
+    }
+
+    // Get session and user info
+    const session = await storage.getSession(sessionId);
+    if (!session || session.userId !== userId) {
+      throw new AppError(404, "Session not found");
+    }
+
+    const user = await storage.getUser(userId);
+    const settings = await storage.getConvertKitSettings(userId);
+
+    if (!settings?.emailConsent) {
+      throw new AppError(400, "User has not consented to emails");
+    }
+
+    try {
+      // Get analysis results
+      const photos = await storage.getPhotosBySession(sessionId);
+      const bestPhoto = photos.find(p => p.isSelectedBest);
+
+      const response = await convertKitService.sendPhotoAnalysisEmail({
+        sessionId,
+        campaignType: campaignType || 'analysis_complete',
+        userEmail: user.email,
+        userName: user.firstName,
+        analysisResults: {
+          photoCount: photos.length,
+          bestPhotoUrl: bestPhoto?.fileUrl,
+          qualityScore: bestPhoto?.qualityScore ? parseFloat(bestPhoto.qualityScore) : undefined,
+          facesDetected: photos.reduce((total, photo) => {
+            const analysis = photo.analysisData as any;
+            return total + (analysis?.faces?.length || 0);
+          }, 0),
+        },
+      });
+
+      res.json(response);
+    } catch (error) {
+      logger.error('Failed to send analysis email', { 
+        sessionId,
+        userId,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+      throw new AppError(500, "Failed to send analysis email");
+    }
   }));
 
   // Object Storage routes

@@ -94,9 +94,42 @@ export const faces = pgTable("faces", {
   index("idx_faces_person_index").on(table.personIndex),
 ]);
 
+// ConvertKit integration settings
+export const convertKitSettings = pgTable("convertkit_settings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  subscriberId: varchar("subscriber_id"), // ConvertKit subscriber ID
+  emailConsent: boolean("email_consent").default(false),
+  marketingConsent: boolean("marketing_consent").default(false),
+  tags: text("tags").array(), // Array of ConvertKit tag IDs
+  unsubscribedAt: timestamp("unsubscribed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("idx_convertkit_settings_user_id").on(table.userId),
+  index("idx_convertkit_settings_subscriber_id").on(table.subscriberId),
+]);
+
+// Email campaigns for photo analysis results
+export const emailCampaigns = pgTable("email_campaigns", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sessionId: varchar("session_id").references(() => photoSessions.id, { onDelete: "cascade" }).notNull(),
+  campaignType: varchar("campaign_type", { length: 50 }), // 'analysis_complete', 'tips', 'follow_up', 'newsletter'
+  convertKitBroadcastId: varchar("convertkit_broadcast_id"),
+  status: varchar("status", { length: 50 }).default("pending"), // pending, sent, failed
+  sentAt: timestamp("sent_at"),
+  error: text("error"), // Store error message if failed
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("idx_email_campaigns_session_id").on(table.sessionId),
+  index("idx_email_campaigns_status").on(table.status),
+  index("idx_email_campaigns_type").on(table.campaignType),
+]);
+
 // Define relations
 export const usersRelations = relations(users, ({ many }) => ({
   sessions: many(photoSessions),
+  convertKitSettings: many(convertKitSettings),
 }));
 
 export const photoSessionsRelations = relations(photoSessions, ({ one, many }) => ({
@@ -105,6 +138,7 @@ export const photoSessionsRelations = relations(photoSessions, ({ one, many }) =
     references: [users.id],
   }),
   photos: many(photos),
+  emailCampaigns: many(emailCampaigns),
 }));
 
 export const photosRelations = relations(photos, ({ one, many }) => ({
@@ -119,6 +153,20 @@ export const facesRelations = relations(faces, ({ one }) => ({
   photo: one(photos, {
     fields: [faces.photoId],
     references: [photos.id],
+  }),
+}));
+
+export const convertKitSettingsRelations = relations(convertKitSettings, ({ one }) => ({
+  user: one(users, {
+    fields: [convertKitSettings.userId],
+    references: [users.id],
+  }),
+}));
+
+export const emailCampaignsRelations = relations(emailCampaigns, ({ one }) => ({
+  session: one(photoSessions, {
+    fields: [emailCampaigns.sessionId],
+    references: [photoSessions.id],
   }),
 }));
 
@@ -139,6 +187,18 @@ export const insertFaceSchema = createInsertSchema(faces).omit({
   createdAt: true,
 });
 
+export const insertConvertKitSettingsSchema = createInsertSchema(convertKitSettings).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertEmailCampaignSchema = createInsertSchema(emailCampaigns).omit({
+  id: true,
+  createdAt: true,
+  sentAt: true,
+});
+
 // TypeScript types
 export type User = typeof users.$inferSelect;
 export type UpsertUser = typeof users.$inferInsert;
@@ -151,6 +211,12 @@ export type InsertPhoto = z.infer<typeof insertPhotoSchema>;
 
 export type Face = typeof faces.$inferSelect;
 export type InsertFace = z.infer<typeof insertFaceSchema>;
+
+export type ConvertKitSettings = typeof convertKitSettings.$inferSelect;
+export type InsertConvertKitSettings = z.infer<typeof insertConvertKitSettingsSchema>;
+
+export type EmailCampaign = typeof emailCampaigns.$inferSelect;
+export type InsertEmailCampaign = z.infer<typeof insertEmailCampaignSchema>;
 
 // Analysis result types (not stored in DB, used for API responses)
 export interface FaceAnalysis {

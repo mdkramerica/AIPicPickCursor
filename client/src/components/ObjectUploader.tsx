@@ -6,6 +6,7 @@ import { DashboardModal } from "@uppy/react";
 import XHRUpload from "@uppy/xhr-upload";
 import type { UploadResult } from "@uppy/core";
 import { Button } from "@/components/ui/button";
+import { useKindeAuth } from "@kinde-oss/kinde-auth-react";
 
 interface ObjectUploaderProps {
   maxNumberOfFiles?: number;
@@ -26,6 +27,8 @@ export function ObjectUploader({
 }: ObjectUploaderProps) {
   const [showModal, setShowModal] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { getToken } = useKindeAuth();
+
   const [uppy] = useState(() =>
     new Uppy({
       restrictions: {
@@ -42,8 +45,13 @@ export function ObjectUploader({
         endpoint: '/api/objects/upload',
         fieldName: 'file',
         formData: true,
-        withCredentials: true, // Include cookies for authentication
-        headers: {},
+        headers: async () => {
+          // Get the access token from Kinde
+          const token = await getToken();
+          return {
+            'Authorization': token ? `Bearer ${token}` : '',
+          };
+        },
       })
       .on("upload", () => {
         console.log("🚀 Upload started");

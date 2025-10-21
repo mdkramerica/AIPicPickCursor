@@ -4,6 +4,8 @@ import {
   photoSessions,
   photos,
   faces,
+  convertKitSettings,
+  emailCampaigns,
   type User,
   type UpsertUser,
   type PhotoSession,
@@ -12,6 +14,10 @@ import {
   type InsertPhoto,
   type Face,
   type InsertFace,
+  type ConvertKitSettings,
+  type InsertConvertKitSettings,
+  type EmailCampaign,
+  type InsertEmailCampaign,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc } from "drizzle-orm";
@@ -37,6 +43,16 @@ export interface IStorage {
   // Face operations
   createFace(face: InsertFace): Promise<Face>;
   getFacesByPhoto(photoId: string): Promise<Face[]>;
+  
+  // ConvertKit operations
+  getConvertKitSettings(userId: string): Promise<ConvertKitSettings | undefined>;
+  createConvertKitSettings(settings: InsertConvertKitSettings): Promise<ConvertKitSettings>;
+  updateConvertKitSettings(userId: string, data: Partial<ConvertKitSettings>): Promise<ConvertKitSettings | undefined>;
+  
+  // Email Campaign operations
+  getEmailCampaignsBySession(sessionId: string): Promise<EmailCampaign[]>;
+  createEmailCampaign(campaign: InsertEmailCampaign): Promise<EmailCampaign>;
+  updateEmailCampaign(id: string, data: Partial<EmailCampaign>): Promise<EmailCampaign | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
