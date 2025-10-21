@@ -2,6 +2,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import multer from "multer";
+import heicConvert from 'heic-convert';
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated, syncUserToDatabase } from "./kindeAuth";
 import {
@@ -255,14 +256,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Helper function to check if buffer is HEIC/HEIF format
+  function isHEICFormat(buffer: Buffer): boolean {
+    if (buffer.length < 12) return false;
+    const ftypSignature = buffer.toString('ascii', 4, 8);
+    if (ftypSignature === 'ftyp') {
+      const brand = buffer.toString('ascii', 8, 12);
+      return brand.startsWith('heic') || brand.startsWith('heix') ||
+             brand.startsWith('hevc') || brand.startsWith('hevx') ||
+             brand.startsWith('mif1') || brand.startsWith('msf1');
+    }
+    return false;
+  }
+
   // Direct file upload to R2 (no CORS issues)
   app.post("/api/objects/upload", uploadLimiter, isAuthenticated, upload.single('file'), asyncHandler(async (req: any, res) => {
     if (!req.file) {
       throw new AppError(400, "No file uploaded");
     }
 
+    let fileBuffer = req.file.buffer;
+    let fileMimetype = req.file.mimetype;
+
+    // Convert HEIC/HEIF to JPEG for browser compatibility
+    const isHeic = fileMimetype.includes('heic') || fileMimetype.includes('heif') || isHEICFormat(fileBuffer);
+
+    if (isHeic) {
+      console.log(`🔄 Converting HEIC/HEIF image to JPEG for browser compatibility`);
+      try {
+        const outputBuffer = await heicConvert({
+          buffer: fileBuffer,
+          format: 'JPEG',
+          quality: 0.92
+        });
+        fileBuffer = Buffer.from(outputBuffer);
+        fileMimetype = 'image/jpeg';
+        console.log(`✅ HEIC conversion successful, new size: ${fileBuffer.length} bytes`);
+      } catch (conversionError) {
+        console.error(`❌ HEIC conversion failed:`, conversionError);
+        throw new AppError(500, `Failed to convert HEIC image: ${conversionError instanceof Error ? conversionError.message : 'Unknown error'}`);
+      }
+    }
+
     const r2Storage = new R2StorageService();
-    const { objectKey } = await r2Storage.uploadFile(req.file.buffer, req.file.mimetype);
+    const { objectKey } = await r2Storage.uploadFile(fileBuffer, fileMimetype);
 
     // Return the object path that can be used to access the file
     res.json({
