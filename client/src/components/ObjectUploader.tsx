@@ -112,14 +112,17 @@ export function ObjectUploader({
       console.log("📋 Response body:", response.body);
       console.log("📋 Response status:", response.status);
 
-      // Store the fileUrl from the response in the file's uploadURL for compatibility
+      // Store the fileUrl from the response using Uppy's state API
       if (file && response.body) {
         const fileUrl = (response.body as any).fileUrl;
         console.log("💾 Setting uploadURL to:", fileUrl);
-        file.uploadURL = fileUrl;
 
-        // Also set response.uploadURL for Uppy's internal tracking
-        response.uploadURL = fileUrl;
+        // Use Uppy's setFileState to properly update the file object
+        uppyInstance.setFileState(file.id, {
+          uploadURL: fileUrl
+        });
+
+        console.log("✅ File state updated for:", file.id);
       } else {
         console.error("❌ Missing file or response.body:", { hasFile: !!file, hasBody: !!response.body });
       }
