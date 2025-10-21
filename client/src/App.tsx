@@ -11,6 +11,7 @@ import Landing from "@/pages/landing";
 import Dashboard from "@/pages/dashboard";
 import Comparison from "@/pages/comparison";
 import Album from "@/pages/album";
+import BulkUpload from "@/pages/bulk-upload";
 
 // Get Kinde configuration from environment
 const KINDE_DOMAIN = import.meta.env.VITE_KINDE_DOMAIN;
@@ -84,6 +85,11 @@ function Router() {
         <Route path="/session/:sessionId/compare">
           <ProtectedRoute>
             <Comparison />
+          </ProtectedRoute>
+        </Route>
+        <Route path="/bulk-upload">
+          <ProtectedRoute>
+            <BulkUpload />
           </ProtectedRoute>
         </Route>
         <Route component={NotFound} />

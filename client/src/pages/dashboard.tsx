@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useLocation, Link } from "wouter";
+import { useLocation, Link, navigate } from "wouter";
 import { Sparkles, Upload, LogOut, Eye, Smile, Loader2, Image as ImageIcon, Download, Images } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardContent, CardFooter } from "@/components/ui/card";
@@ -410,6 +410,16 @@ export default function Dashboard() {
                 <Sparkles className="mr-2 h-4 w-4" />
               )}
               New Session
+            </Button>
+            <Button 
+              variant="outline"
+              onClick={() => navigate("/bulk-upload")}
+              size="lg"
+              data-testid="button-bulk-upload"
+              className="w-full sm:w-auto min-h-[48px] sm:min-h-[40px]"
+            >
+              <Images className="w-4 h-4 mr-2" />
+              Bulk Upload
             </Button>
             {selectedSession && (
               <ObjectUploader
