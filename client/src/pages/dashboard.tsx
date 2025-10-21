@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation, Link } from "wouter";
 import { Sparkles, Upload, LogOut, Eye, Smile, Loader2, Image as ImageIcon, Download, Images } from "lucide-react";
@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardContent, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Progress } from "@/components/ui/progress";
 import { ObjectUploader } from "@/components/ObjectUploader";
 import { useAuth } from "@/hooks/useAuth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -15,11 +16,23 @@ import type { UploadResult } from "@uppy/core";
 import type { PhotoSession, Photo } from "@shared/schema";
 import { useKindeAuth } from "@kinde-oss/kinde-auth-react";
 
+interface AnalysisProgress {
+  sessionId: string;
+  currentPhoto: number;
+  totalPhotos: number;
+  percentage: number;
+  status: 'loading_models' | 'analyzing' | 'selecting_best' | 'complete' | 'error';
+  message: string;
+  currentPhotoId?: string;
+}
+
 export default function Dashboard() {
   const { user } = useAuth();
   const { logout } = useKindeAuth();
   const { toast } = useToast();
   const [selectedSession, setSelectedSession] = useState<string | null>(null);
+  const [analysisProgress, setAnalysisProgress] = useState<AnalysisProgress | null>(null);
+  const eventSourceRef = useRef<EventSource | null>(null);
 
   // Fetch sessions
   const { data: sessions, isLoading: sessionsLoading } = useQuery<PhotoSession[]>({
@@ -107,15 +120,36 @@ export default function Dashboard() {
   // Navigate to results
   const [, navigate] = useLocation();
 
-  // Analyze session mutation (bypass face selection)
+  // Analyze session mutation with SSE progress tracking
   const analyzeSessionMutation = useMutation({
     mutationFn: async (sessionId: string) => {
+      // Connect to SSE for progress updates
+      const eventSource = new EventSource(`/api/sessions/${sessionId}/progress`);
+      eventSourceRef.current = eventSource;
+
+      eventSource.onmessage = (event) => {
+        const progress: AnalysisProgress = JSON.parse(event.data);
+        setAnalysisProgress(progress);
+
+        if (progress.status === 'complete') {
+          eventSource.close();
+          eventSourceRef.current = null;
+        }
+      };
+
+      eventSource.onerror = () => {
+        eventSource.close();
+        eventSourceRef.current = null;
+      };
+
+      // Start the analysis
       const res = await apiRequest("POST", `/api/sessions/${sessionId}/analyze`, {});
       return await res.json();
     },
     onSuccess: (_, sessionId) => {
       queryClient.invalidateQueries({ queryKey: ["/api/sessions", sessionId, "photos"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sessions"] });
+      setAnalysisProgress(null);
       toast({
         title: "Analysis Complete",
         description: "Your photos have been analyzed!",
@@ -123,6 +157,12 @@ export default function Dashboard() {
       navigate(`/session/${sessionId}/compare`);
     },
     onError: (error: Error) => {
+      setAnalysisProgress(null);
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+      }
+
       if (isUnauthorizedError(error)) {
         toast({
           title: "Unauthorized",
@@ -183,6 +223,15 @@ export default function Dashboard() {
 
   // Debug panel toggle
   const [showDebug, setShowDebug] = useState(false);
+
+  // Cleanup EventSource on unmount
+  useEffect(() => {
+    return () => {
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+      }
+    };
+  }, []);
 
   return (
     <div className="min-h-screen bg-background pb-20 sm:pb-8">
@@ -388,6 +437,29 @@ export default function Dashboard() {
               </div>
             </div>
             
+            {/* Analysis Progress Bar */}
+            {analysisProgress && (
+              <Card className="mb-6 p-6">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="font-semibold text-lg">Analyzing Photos</h3>
+                      <p className="text-sm text-muted-foreground">{analysisProgress.message}</p>
+                    </div>
+                    <Badge variant="secondary" className="font-mono text-lg px-3 py-1">
+                      {analysisProgress.percentage}%
+                    </Badge>
+                  </div>
+                  <Progress value={analysisProgress.percentage} className="h-3" />
+                  {analysisProgress.status === 'analyzing' && (
+                    <p className="text-xs text-muted-foreground text-center">
+                      Photo {analysisProgress.currentPhoto} of {analysisProgress.totalPhotos}
+                    </p>
+                  )}
+                </div>
+              </Card>
+            )}
+
             {!canAnalyze && photos && photos.length > 0 && photos.length < 2 && (
               <div className="mb-4 p-3 sm:p-4 bg-muted rounded-lg text-sm text-muted-foreground text-center">
                 Upload at least 2 photos to start analysis

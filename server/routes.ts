@@ -366,7 +366,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Photo Analysis routes
-  
+
+  // SSE endpoint for analysis progress updates
+  app.get("/api/sessions/:sessionId/progress", isAuthenticated, validateUUID("sessionId"), async (req: any, res) => {
+    const userId = req.userId;
+    const sessionId = req.params.sessionId;
+
+    // Verify user owns this session
+    const session = await storage.getSession(sessionId);
+    if (!session || session.userId !== userId) {
+      return res.sendStatus(403);
+    }
+
+    // Set up SSE headers
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no'); // Disable nginx buffering
+
+    // Subscribe to progress updates
+    const unsubscribe = photoAnalysisService.onProgress(sessionId, (progress) => {
+      res.write(`data: ${JSON.stringify(progress)}\n\n`);
+
+      // Close connection when complete or error
+      if (progress.status === 'complete' || progress.status === 'error') {
+        res.end();
+      }
+    });
+
+    // Clean up on client disconnect
+    req.on('close', () => {
+      unsubscribe();
+    });
+  });
+
   // Preview face detection (quick detection before full analysis)
   app.post("/api/sessions/:sessionId/preview", isAuthenticated, async (req: any, res) => {
     try {
@@ -429,8 +462,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         status: "analyzing",
       });
 
-      // Analyze all photos with face selections
+      // Analyze all photos with face selections (pass sessionId for progress tracking)
       const { analyses, bestPhotoId } = await photoAnalysisService.analyzeSession(
+        req.params.sessionId,
         photos.map(p => ({ id: p.id, fileUrl: p.fileUrl })),
         faceSelections
       );

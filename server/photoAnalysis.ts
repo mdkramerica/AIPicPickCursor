@@ -469,20 +469,51 @@ export class PhotoAnalysisService {
 
   /**
    * Analyze all photos in a session
+   * @param sessionId - Session ID for progress tracking
    * @param photos - Photos to analyze
    * @param faceSelections - Optional face selections per photo: { photoId: { faceIdx: true/false } }
    */
   async analyzeSession(
+    sessionId: string,
     photos: { id: string; fileUrl: string }[],
     faceSelections?: Record<string, Record<number, boolean>>
   ): Promise<{
     analyses: PhotoAnalysisResult[];
     bestPhotoId: string | null;
   }> {
+    const totalPhotos = photos.length;
+
+    // Emit initial progress - loading models
+    this.emitProgress({
+      sessionId,
+      currentPhoto: 0,
+      totalPhotos,
+      percentage: 0,
+      status: 'loading_models',
+      message: 'Loading AI models...',
+    });
+
+    // Ensure models are loaded
+    await this.loadModels();
+
     // Analyze all photos with error handling
     const analyses: PhotoAnalysisResult[] = [];
 
-    for (const photo of photos) {
+    for (let i = 0; i < photos.length; i++) {
+      const photo = photos[i];
+
+      // Emit progress for current photo
+      const progressPercentage = Math.round(((i) / totalPhotos) * 100);
+      this.emitProgress({
+        sessionId,
+        currentPhoto: i + 1,
+        totalPhotos,
+        percentage: progressPercentage,
+        status: 'analyzing',
+        message: `Analyzing photo ${i + 1} of ${totalPhotos}...`,
+        currentPhotoId: photo.id,
+      });
+
       try {
         const analysis = await this.analyzePhoto(photo.fileUrl, photo.id);
         
@@ -556,11 +587,21 @@ export class PhotoAnalysisService {
       }
     }
 
+    // Emit progress - selecting best photo
+    this.emitProgress({
+      sessionId,
+      currentPhoto: totalPhotos,
+      totalPhotos,
+      percentage: 100,
+      status: 'selecting_best',
+      message: 'Selecting best photo...',
+    });
+
     // Three-tier priority system for selecting best photo:
     // Priority 0: Face count consensus (only consider photos within 1 face of max detected)
     // Priority 1: Maximum eyes open count
     // Priority 2: Quality score tiebreaker (smiles + face quality)
-    
+
     // First, find the maximum number of faces detected across all photos
     const maxFaceCount = Math.max(...analyses.map(a => a.faces.length), 0);
     
@@ -605,6 +646,16 @@ export class PhotoAnalysisService {
         bestPhotoId = analysis.photoId;
       }
     }
+
+    // Emit completion
+    this.emitProgress({
+      sessionId,
+      currentPhoto: totalPhotos,
+      totalPhotos,
+      percentage: 100,
+      status: 'complete',
+      message: 'Analysis complete!',
+    });
 
     return {
       analyses,
