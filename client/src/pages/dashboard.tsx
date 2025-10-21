@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation, Link, navigate } from "wouter";
-import { Sparkles, Upload, LogOut, Eye, Smile, Loader2, Image as ImageIcon, Download, Images } from "lucide-react";
+import { Sparkles, Upload, LogOut, Eye, Smile, Loader2, Image as ImageIcon, Download, Images, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardContent, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -12,6 +12,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { isUnauthorizedError } from "@/lib/authUtils";
+import { useConvertKit } from "@/hooks/useConvertKit";
+import { NewsletterSignup } from "@/components/NewsletterSignup";
 import type { UploadResult } from "@uppy/core";
 import type { PhotoSession, Photo } from "@shared/schema";
 import { useKindeAuth } from "@kinde-oss/kinde-auth-react";
@@ -30,6 +32,7 @@ export default function Dashboard() {
   const { user } = useAuth();
   const { logout } = useKindeAuth();
   const { toast } = useToast();
+  const { isSubscribed } = useConvertKit();
   const [selectedSession, setSelectedSession] = useState<string | null>(null);
   const [analysisProgress, setAnalysisProgress] = useState<AnalysisProgress | null>(null);
   const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -360,6 +363,12 @@ export default function Dashboard() {
                 <span className="hidden sm:inline ml-2">Album</span>
               </Link>
             </Button>
+            <Button variant="ghost" size="sm" asChild data-testid="button-email-preferences" className="min-h-[44px]">
+              <Link href="/email-preferences">
+                <Settings className="h-4 w-4" />
+                <span className="hidden sm:inline ml-2">Email</span>
+              </Link>
+            </Button>
             {selectedSession && canAnalyze && (
               <Button 
                 onClick={() => analyzeSessionMutation.mutate(selectedSession)}
@@ -434,6 +443,19 @@ export default function Dashboard() {
             )}
           </div>
         </div>
+
+        {/* Newsletter Signup Prompt (show if user has completed sessions but not subscribed) */}
+        {!isSubscribed && sessions && sessions.some(s => s.status === "completed") && (
+          <Card className="mb-6 border-primary/50 bg-primary/5">
+            <CardContent className="pt-6">
+              <NewsletterSignup
+                title="Get Notified About Your Photo Analysis 📧"
+                description="Subscribe to receive automatic email notifications when your photo analysis is complete, plus helpful photo tips!"
+                compact={false}
+              />
+            </CardContent>
+          </Card>
+        )}
 
         {/* Sessions List */}
         {sessionsLoading ? (

@@ -8,14 +8,14 @@ import BulkUploadComponent from "@/components/BulkUploadComponent";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { useBulkSession } from "@/hooks/useBulkSession";
+// import { useBulkSession } from "@/hooks/useBulkSession"; // Not used in this component
 
 export default function BulkUploadPage() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const [sessionId, setSessionId] = useState<string | null>(null);
 
-  // Create bulk session mutation
+  // Create session mutation for bulk upload
   const createSessionMutation = useMutation({
     mutationFn: async (data: { name: string; bulkMode: boolean }) => {
       const response = await apiRequest("POST", "/api/sessions", data);
@@ -37,9 +37,6 @@ export default function BulkUploadPage() {
     },
   });
 
-  // Initialize bulk session
-  const { createBulkSession, uploadFiles, startGrouping, progress } = useBulkSession();
-
   const handleUploadComplete = async (results: any[]) => {
     if (sessionId) {
       toast({
@@ -47,12 +44,18 @@ export default function BulkUploadPage() {
         description: `Successfully uploaded ${results.length} photos`,
       });
       
-      // Start grouping analysis
+      // Start grouping analysis using existing endpoint
       try {
-        await startGrouping(sessionId, {
-          algorithm: 'hierarchical',
+        const response = await apiRequest("POST", `/api/sessions/${sessionId}/group-analyze`, {
           similarityThreshold: 0.7,
-          enableTemporalGrouping: true,
+          targetGroupSize: 5,
+          minGroupSize: 2,
+          maxGroupSize: 10,
+        });
+        await response.json();
+        toast({
+          title: "Grouping started",
+          description: "AI is analyzing your photos",
         });
       } catch (error) {
         toast({
@@ -78,14 +81,12 @@ export default function BulkUploadPage() {
 
   const initializeSession = async () => {
     try {
-      const newSessionId = await createBulkSession({
+      const response = await apiRequest("POST", "/api/sessions", {
         name: `Bulk Upload ${new Date().toLocaleDateString()}`,
-        maxGroups: 50,
-        similarityThreshold: 0.7,
-        enableFaceDetection: true,
-        enableQualityAnalysis: true,
+        bulkMode: true,
       });
-      setSessionId(newSessionId);
+      const session = await response.json();
+      setSessionId(session.id);
     } catch (error) {
       toast({
         title: "Failed to create session",
@@ -143,8 +144,11 @@ export default function BulkUploadPage() {
                   then help you find the best photo from each group.
                 </p>
               </div>
-              <Button 
-                onClick={initializeSession}
+              <Button
+                onClick={() => createSessionMutation.mutate({
+                  name: `Bulk Upload ${new Date().toLocaleDateString()}`,
+                  bulkMode: true,
+                })}
                 disabled={createSessionMutation.isPending}
                 size="lg"
               >
@@ -188,26 +192,7 @@ export default function BulkUploadPage() {
             </CardContent>
           </Card>
 
-          {/* Progress tracking */}
-          {(progress.stage !== 'completed' && progress.stage !== 'error') && (
-            <Card>
-              <CardHeader>
-                <h3 className="text-lg font-semibold">Analysis Progress</h3>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="font-medium capitalize">{progress.stage}</span>
-                    <span>{progress.processedPhotos} / {progress.totalPhotos}</span>
-                  </div>
-                  {/* Progress bar implementation would go here */}
-                  {progress.message && (
-                    <p className="text-sm text-muted-foreground">{progress.message}</p>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          )}
+
         </div>
       )}
     </div>

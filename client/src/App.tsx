@@ -12,6 +12,7 @@ import Dashboard from "@/pages/dashboard";
 import Comparison from "@/pages/comparison";
 import Album from "@/pages/album";
 import BulkUpload from "@/pages/bulk-upload";
+import EmailPreferences from "@/pages/email-preferences";
 
 // Get Kinde configuration from environment
 const KINDE_DOMAIN = import.meta.env.VITE_KINDE_DOMAIN;
@@ -90,6 +91,11 @@ function Router() {
         <Route path="/bulk-upload">
           <ProtectedRoute>
             <BulkUpload />
+          </ProtectedRoute>
+        </Route>
+        <Route path="/email-preferences">
+          <ProtectedRoute>
+            <EmailPreferences />
           </ProtectedRoute>
         </Route>
         <Route component={NotFound} />
