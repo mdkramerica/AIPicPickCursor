@@ -4,9 +4,9 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated, syncUserToDatabase } from "./kindeAuth";
 import {
-  ObjectStorageService,
+  R2StorageService,
   ObjectNotFoundError,
-} from "./objectStorage";
+} from "./r2Storage";
 import { ObjectPermission } from "./objectAcl";
 import { photoAnalysisService } from "./photoAnalysis";
 import { insertPhotoSessionSchema, insertPhotoSchema } from "@shared/schema";
@@ -40,20 +40,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Object Storage routes
   app.get("/objects/:objectPath(*)", isAuthenticated, async (req: any, res) => {
     const userId = req.userId;
-    const objectStorageService = new ObjectStorageService();
+    const r2Storage = new R2StorageService();
     try {
-      const objectFile = await objectStorageService.getObjectEntityFile(
-        req.path,
-      );
-      const canAccess = await objectStorageService.canAccessObjectEntity({
-        objectFile,
+      const normalizedPath = r2Storage.normalizeObjectPath(req.path);
+      const objectKey = r2Storage.getObjectKeyFromPath(normalizedPath);
+
+      const canAccess = await r2Storage.canAccessObject({
         userId: userId,
+        objectKey: objectKey,
         requestedPermission: ObjectPermission.READ,
       });
+
       if (!canAccess) {
-        return res.sendStatus(403); // Fixed: 403 for forbidden, not 401
+        return res.sendStatus(403);
       }
-      objectStorageService.downloadObject(objectFile, res);
+
+      await r2Storage.downloadObject(objectKey, res);
     } catch (error) {
       console.error("Error checking object access:", error);
       if (error instanceof ObjectNotFoundError) {
@@ -64,9 +66,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.post("/api/objects/upload", uploadLimiter, isAuthenticated, asyncHandler(async (req, res) => {
-    const objectStorageService = new ObjectStorageService();
-    const uploadURL = await objectStorageService.getObjectEntityUploadURL();
-    res.json({ uploadURL });
+    const r2Storage = new R2StorageService();
+    const { uploadURL, objectKey } = await r2Storage.getUploadURL();
+    res.json({ uploadURL, objectKey });
   }));
 
   // Photo Session routes
@@ -137,15 +139,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "Forbidden" });
       }
 
-      // Set ACL policy for uploaded photo and get the permanent object path
-      const objectStorageService = new ObjectStorageService();
-      const permanentPath = await objectStorageService.trySetObjectEntityAclPolicy(
-        req.body.fileUrl,
-        {
-          owner: userId,
-          visibility: "private",
-        },
-      );
+      // Normalize the object path and set ACL policy
+      const r2Storage = new R2StorageService();
+      const normalizedPath = r2Storage.normalizeObjectPath(req.body.fileUrl);
+
+      // For R2, we'll use the object key directly as the permanent path
+      // The object is already in R2, we just normalize the path
+      const permanentPath = normalizedPath.startsWith("/objects/")
+        ? normalizedPath
+        : `/objects/${req.body.fileUrl}`;
 
       const photos = await storage.getPhotosBySession(req.params.sessionId);
       
