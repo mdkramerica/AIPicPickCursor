@@ -108,10 +108,20 @@ export function ObjectUploader({
     });
 
     uppyInstance.on("upload-success", (file, response) => {
-      console.log("✅ Upload success:", file?.name, response);
+      console.log("✅ Upload success:", file?.name, "Response:", response);
+      console.log("📋 Response body:", response.body);
+      console.log("📋 Response status:", response.status);
+
       // Store the fileUrl from the response in the file's uploadURL for compatibility
       if (file && response.body) {
-        file.uploadURL = (response.body as any).fileUrl;
+        const fileUrl = (response.body as any).fileUrl;
+        console.log("💾 Setting uploadURL to:", fileUrl);
+        file.uploadURL = fileUrl;
+
+        // Also set response.uploadURL for Uppy's internal tracking
+        response.uploadURL = fileUrl;
+      } else {
+        console.error("❌ Missing file or response.body:", { hasFile: !!file, hasBody: !!response.body });
       }
     });
 
@@ -121,6 +131,16 @@ export function ObjectUploader({
 
     uppyInstance.on("complete", (result) => {
       console.log("🏁 Upload complete:", result.successful?.length || 0, "files");
+      console.log("📊 Complete result details:", {
+        successful: result.successful?.length,
+        failed: result.failed?.length,
+        successfulFiles: result.successful?.map(f => ({
+          name: f.name,
+          uploadURL: f.uploadURL,
+          response: f.response
+        }))
+      });
+
       onComplete?.(result);
       setShowModal(false);
       uppyInstance.cancelAll();
