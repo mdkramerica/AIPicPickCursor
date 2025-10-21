@@ -309,15 +309,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const userId = req.userId;
       const session = await storage.getSession(req.params.sessionId);
-      
+
       if (!session) {
         return res.status(404).json({ message: "Session not found" });
       }
-      
+
       if (session.userId !== userId) {
         return res.status(403).json({ message: "Forbidden" });
       }
-      
+
       const photos = await storage.getPhotosBySession(req.params.sessionId);
       res.json(photos);
     } catch (error) {
@@ -325,6 +325,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: "Failed to fetch photos" });
     }
   });
+
+  // Get presigned URLs for session photos (for displaying images without auth)
+  app.get("/api/sessions/:sessionId/photos/presigned-urls", apiLimiter, isAuthenticated, validateUUID("sessionId"), asyncHandler(async (req: any, res) => {
+    const userId = req.userId;
+    const sessionId = req.params.sessionId;
+
+    // Verify user owns this session
+    const session = await storage.getSession(sessionId);
+    if (!session || session.userId !== userId) {
+      throw new AppError(403, "Forbidden");
+    }
+
+    // Get photos
+    const photos = await storage.getPhotosBySession(sessionId);
+
+    // Generate presigned URLs for each photo
+    const r2Storage = new R2StorageService();
+    const photosWithPresignedUrls = await Promise.all(
+      photos.map(async (photo) => {
+        try {
+          // Extract object key from fileUrl
+          const objectKey = r2Storage.getObjectKeyFromPath(photo.fileUrl);
+          // Generate presigned URL (valid for 1 hour)
+          const presignedUrl = await r2Storage.getDownloadURL(objectKey, 3600);
+
+          return {
+            photoId: photo.id,
+            presignedUrl,
+          };
+        } catch (error) {
+          console.error(`Error generating presigned URL for photo ${photo.id}:`, error);
+          return {
+            photoId: photo.id,
+            presignedUrl: null,
+            error: 'Failed to generate URL',
+          };
+        }
+      })
+    );
+
+    res.json({ photos: photosWithPresignedUrls });
+  }));
 
   app.post("/api/sessions/:sessionId/photos", isAuthenticated, async (req: any, res) => {
     try {

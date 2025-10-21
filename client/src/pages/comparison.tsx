@@ -42,11 +42,33 @@ export default function Comparison() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [isSharing, setIsSharing] = useState(false);
+  const [presignedUrls, setPresignedUrls] = useState<Record<string, string>>({});
 
   const { data: photos, isLoading } = useQuery<Photo[]>({
     queryKey: ["/api/sessions", sessionId, "photos"],
     enabled: !!sessionId && !!user,
   });
+
+  // Fetch presigned URLs for all photos
+  const { data: presignedData, isLoading: presignedLoading } = useQuery<{
+    photos: Array<{ photoId: string; presignedUrl: string | null }>;
+  }>({
+    queryKey: ["/api/sessions", sessionId, "photos/presigned-urls"],
+    enabled: !!sessionId && !!user,
+  });
+
+  // Update presignedUrls state when data arrives
+  useEffect(() => {
+    if (presignedData?.photos) {
+      const urlMap: Record<string, string> = {};
+      presignedData.photos.forEach((item) => {
+        if (item.presignedUrl) {
+          urlMap[item.photoId] = item.presignedUrl;
+        }
+      });
+      setPresignedUrls(urlMap);
+    }
+  }, [presignedData]);
 
   const sharePhoto = async (photoUrl: string, filename: string) => {
     if (!navigator.share) {
@@ -127,7 +149,7 @@ export default function Comparison() {
     }
   };
 
-  if (isLoading) {
+  if (isLoading || presignedLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <p className="text-muted-foreground">Loading comparison...</p>
@@ -156,12 +178,12 @@ export default function Comparison() {
     });
 
   // Component for photo with properly aligned bounding boxes
-  const PhotoWithBoundingBoxes = ({ 
-    photo, 
-    faces 
-  }: { 
-    photo: Photo; 
-    faces: Photo['analysisData']['faces'] 
+  const PhotoWithBoundingBoxes = ({
+    photo,
+    faces
+  }: {
+    photo: Photo;
+    faces: Photo['analysisData']['faces']
   }) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const imageRef = useRef<HTMLImageElement>(null);
@@ -173,10 +195,13 @@ export default function Comparison() {
       scale: number;
     } | null>(null);
 
+    // Get presigned URL for this photo
+    const imageUrl = presignedUrls[photo.id] || photo.fileUrl;
+
     const updateOverlayDimensions = () => {
       const container = containerRef.current;
       const image = imageRef.current;
-      
+
       if (!container || !image || !image.naturalWidth) return;
 
       const containerWidth = container.clientWidth;
@@ -213,7 +238,7 @@ export default function Comparison() {
 
       // Update on load
       image.addEventListener('load', updateOverlayDimensions);
-      
+
       // Update on resize
       const resizeObserver = new ResizeObserver(updateOverlayDimensions);
       if (containerRef.current) {
@@ -229,13 +254,13 @@ export default function Comparison() {
         image.removeEventListener('load', updateOverlayDimensions);
         resizeObserver.disconnect();
       };
-    }, [photo.fileUrl]);
+    }, [imageUrl]);
 
     return (
       <div ref={containerRef} className="relative bg-muted aspect-[4/3]">
         <img
           ref={imageRef}
-          src={photo.fileUrl}
+          src={imageUrl}
           alt={photo.originalFilename}
           className="w-full h-full object-contain"
           data-testid={`img-photo-${photo.id}`}
@@ -429,7 +454,7 @@ export default function Comparison() {
 
                   {/* Share button - available for all photos */}
                   <Button
-                    onClick={() => sharePhoto(photo.fileUrl, photo.originalFilename)}
+                    onClick={() => sharePhoto(presignedUrls[photo.id] || photo.fileUrl, photo.originalFilename)}
                     disabled={isSharing}
                     variant={photo.isSelectedBest ? "default" : "outline"}
                     className="w-full mt-3"
