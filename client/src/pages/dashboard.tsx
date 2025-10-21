@@ -47,24 +47,50 @@ export default function Dashboard() {
   });
 
   // Fetch presigned URLs for all photos in selected session
-  const { data: presignedData, isLoading: presignedLoading } = useQuery<{
+  const { data: presignedData, isLoading: presignedLoading, error: presignedError } = useQuery<{
     photos: Array<{ photoId: string; presignedUrl: string | null }>;
   }>({
     queryKey: ["/api/sessions", selectedSession, "photos/presigned-urls"],
     enabled: !!selectedSession && !!user,
   });
 
+  // Log presigned URL query status
+  useEffect(() => {
+    console.log('🔍 Presigned URL Query Status:', {
+      isLoading: presignedLoading,
+      hasData: !!presignedData,
+      hasError: !!presignedError,
+      error: presignedError,
+      selectedSession,
+      hasUser: !!user,
+      enabled: !!selectedSession && !!user
+    });
+  }, [presignedLoading, presignedData, presignedError, selectedSession, user]);
+
   // Update presignedUrls state when data arrives
   useEffect(() => {
+    console.log('🔍 Presigned data changed:', {
+      hasData: !!presignedData,
+      photosArray: presignedData?.photos,
+      photosLength: presignedData?.photos?.length,
+      rawData: presignedData
+    });
+
     if (presignedData?.photos) {
       const urlMap: Record<string, string> = {};
       presignedData.photos.forEach((item) => {
+        console.log('🔑 Processing presigned URL item:', item);
         if (item.presignedUrl) {
           urlMap[item.photoId] = item.presignedUrl;
+        } else {
+          console.warn('⚠️ Missing presigned URL for photo:', item.photoId);
         }
       });
       setPresignedUrls(urlMap);
       console.log('📸 Loaded presigned URLs for', Object.keys(urlMap).length, 'photos');
+      console.log('📸 URL Map:', urlMap);
+    } else {
+      console.warn('⚠️ No presignedData.photos available');
     }
   }, [presignedData]);
 
