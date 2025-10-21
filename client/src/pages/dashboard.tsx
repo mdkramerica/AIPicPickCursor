@@ -33,6 +33,7 @@ export default function Dashboard() {
   const [selectedSession, setSelectedSession] = useState<string | null>(null);
   const [analysisProgress, setAnalysisProgress] = useState<AnalysisProgress | null>(null);
   const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const [presignedUrls, setPresignedUrls] = useState<Record<string, string>>({});
 
   // Fetch sessions
   const { data: sessions, isLoading: sessionsLoading } = useQuery<PhotoSession[]>({
@@ -44,6 +45,28 @@ export default function Dashboard() {
     queryKey: ["/api/sessions", selectedSession, "photos"],
     enabled: !!selectedSession,
   });
+
+  // Fetch presigned URLs for all photos in selected session
+  const { data: presignedData, isLoading: presignedLoading } = useQuery<{
+    photos: Array<{ photoId: string; presignedUrl: string | null }>;
+  }>({
+    queryKey: ["/api/sessions", selectedSession, "photos/presigned-urls"],
+    enabled: !!selectedSession && !!user,
+  });
+
+  // Update presignedUrls state when data arrives
+  useEffect(() => {
+    if (presignedData?.photos) {
+      const urlMap: Record<string, string> = {};
+      presignedData.photos.forEach((item) => {
+        if (item.presignedUrl) {
+          urlMap[item.photoId] = item.presignedUrl;
+        }
+      });
+      setPresignedUrls(urlMap);
+      console.log('📸 Loaded presigned URLs for', Object.keys(urlMap).length, 'photos');
+    }
+  }, [presignedData]);
 
   // Create session mutation
   const createSessionMutation = useMutation({
@@ -492,7 +515,7 @@ export default function Dashboard() {
               </div>
             )}
 
-            {photosLoading ? (
+            {(photosLoading || presignedLoading) ? (
               <div className="grid gap-3 sm:gap-4 grid-cols-2 sm:grid-cols-2 lg:grid-cols-3">
                 {[...Array(3)].map((_, i) => (
                   <Skeleton key={i} className="aspect-square w-full rounded-xl" />
@@ -500,12 +523,15 @@ export default function Dashboard() {
               </div>
             ) : photos && photos.length > 0 ? (
               <div className="grid gap-3 sm:gap-4 grid-cols-2 sm:grid-cols-2 lg:grid-cols-3">
-                {photos.map((photo) => (
+                {photos.map((photo) => {
+                  // Use presigned URL if available, fallback to original URL
+                  const imageUrl = presignedUrls[photo.id] || photo.fileUrl;
+                  return (
                   <Card key={photo.id} className="overflow-hidden" data-testid={`card-photo-${photo.id}`}>
                     <div className="aspect-square relative bg-muted">
-                      <img 
-                        src={photo.fileUrl} 
-                        alt={photo.originalFilename || "Photo"} 
+                      <img
+                        src={imageUrl}
+                        alt={photo.originalFilename || "Photo"}
                         className="w-full h-full object-cover"
                       />
                       {photo.isSelectedBest && (
@@ -538,7 +564,8 @@ export default function Dashboard() {
                       </div>
                     </CardFooter>
                   </Card>
-                ))}
+                  );
+                })}
               </div>
             ) : (
               <Card className="p-8 sm:p-12 text-center">
