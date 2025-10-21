@@ -1,16 +1,20 @@
-// Reference: blueprint:javascript_log_in_with_replit
-import { useQuery } from "@tanstack/react-query";
-import type { User } from "@shared/schema";
+import { useKindeAuth } from "@kinde-oss/kinde-auth-react";
 
 export function useAuth() {
-  const { data: user, isLoading } = useQuery<User>({
-    queryKey: ["/api/auth/user"],
-    retry: false,
-  });
+  const { user: kindeUser, isLoading, isAuthenticated } = useKindeAuth();
+
+  // Transform Kinde user to match our User type
+  const user = kindeUser ? {
+    id: kindeUser.id || "",
+    email: kindeUser.email || "",
+    firstName: kindeUser.givenName || "",
+    lastName: kindeUser.familyName || "",
+    profileImageUrl: kindeUser.picture || "",
+  } : null;
 
   return {
     user,
     isLoading,
-    isAuthenticated: !!user,
+    isAuthenticated,
   };
 }

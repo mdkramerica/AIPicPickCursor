@@ -1,9 +1,11 @@
 import { Sparkles, Eye, Smile, Zap, CheckCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { SignInButton } from "@clerk/clerk-react";
+import { useKindeAuth } from "@kinde-oss/kinde-auth-react";
 
 export default function Landing() {
+  const { login } = useKindeAuth();
+
   return (
     <div className="min-h-screen bg-background">
       {/* Mobile-Optimized Header */}
@@ -13,11 +15,9 @@ export default function Landing() {
             <Sparkles className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />
             <span className="text-base sm:text-xl font-semibold">AI Photo Selector</span>
           </div>
-          <SignInButton mode="modal">
-            <Button data-testid="button-login" className="min-h-[44px]">
-              Sign In
-            </Button>
-          </SignInButton>
+          <Button onClick={() => login()} data-testid="button-login" className="min-h-[44px]">
+            Sign In
+          </Button>
         </div>
       </header>
 
@@ -33,12 +33,10 @@ export default function Landing() {
               No more scrolling through dozens of shots. Our AI analyzes faces, detects open eyes and smiles, 
               then recommends the best photo from your group shots—instantly.
             </p>
-            <SignInButton mode="modal">
-              <Button size="lg" className="text-base sm:text-lg px-6 sm:px-8 py-5 sm:py-6 min-h-[52px]" data-testid="button-get-started">
-                <Sparkles className="mr-2 h-5 w-5" />
-                Get Started Free
-              </Button>
-            </SignInButton>
+            <Button onClick={() => login()} size="lg" className="text-base sm:text-lg px-6 sm:px-8 py-5 sm:py-6 min-h-[52px]" data-testid="button-get-started">
+              <Sparkles className="mr-2 h-5 w-5" />
+              Get Started Free
+            </Button>
           </div>
         </div>
       </section>
@@ -140,16 +138,14 @@ export default function Landing() {
           <p className="text-base sm:text-lg mb-6 sm:mb-8 opacity-90">
             Join thousands who've discovered the perfect group photo using AI
           </p>
-          <Button 
-            size="lg" 
-            variant="secondary" 
-            asChild 
+          <Button
+            onClick={() => login()}
+            size="lg"
+            variant="secondary"
             className="text-base sm:text-lg px-6 sm:px-8 py-5 sm:py-6 min-h-[52px]"
             data-testid="button-cta-login"
           >
-            <a href="/api/login">
-              Start Analyzing Photos
-            </a>
+            Start Analyzing Photos
           </Button>
         </div>
       </section>

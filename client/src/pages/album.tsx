@@ -10,6 +10,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Trash2, Images, LogOut, Home } from "lucide-react";
 import { useState } from "react";
 import type { PhotoSession, Photo } from "@shared/schema";
+import { useKindeAuth } from "@kinde-oss/kinde-auth-react";
 
 type AlbumItem = {
   session: PhotoSession;
@@ -45,6 +46,7 @@ type PhotoWithAnalysis = {
 
 export default function Album() {
   const { user } = useAuth();
+  const { logout } = useKindeAuth();
   const { toast } = useToast();
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [photoToDelete, setPhotoToDelete] = useState<string | null>(null);
@@ -105,9 +107,6 @@ export default function Album() {
     },
   });
 
-  const handleLogout = async () => {
-    window.location.href = "/api/logout";
-  };
 
   if (isLoading) {
     return (
@@ -129,7 +128,7 @@ export default function Album() {
                 <span className="text-sm text-muted-foreground">
                   {user.firstName} {user.lastName}
                 </span>
-                <Button variant="ghost" size="sm" onClick={handleLogout} data-testid="button-logout">
+                <Button variant="ghost" size="sm" onClick={() => logout()} data-testid="button-logout">
                   <LogOut className="w-4 h-4 mr-2" />
                   Logout
                 </Button>
@@ -163,7 +162,7 @@ export default function Album() {
               <span className="text-sm text-muted-foreground">
                 {user.firstName} {user.lastName}
               </span>
-              <Button variant="ghost" size="sm" onClick={handleLogout} data-testid="button-logout">
+              <Button variant="ghost" size="sm" onClick={() => logout()} data-testid="button-logout">
                 <LogOut className="w-4 h-4 mr-2" />
                 Logout
               </Button>

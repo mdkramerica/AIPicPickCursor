@@ -13,9 +13,11 @@ import { useToast } from "@/hooks/use-toast";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import type { UploadResult } from "@uppy/core";
 import type { PhotoSession, Photo } from "@shared/schema";
+import { useKindeAuth } from "@kinde-oss/kinde-auth-react";
 
 export default function Dashboard() {
   const { user } = useAuth();
+  const { logout } = useKindeAuth();
   const { toast } = useToast();
   const [selectedSession, setSelectedSession] = useState<string | null>(null);
 
@@ -285,11 +287,9 @@ export default function Dashboard() {
                 className="h-8 w-8 rounded-full object-cover"
               />
             )}
-            <Button variant="ghost" size="sm" asChild data-testid="button-logout" className="min-h-[44px]">
-              <a href="/api/logout">
-                <LogOut className="h-4 w-4" />
-                <span className="hidden sm:inline ml-2">Sign Out</span>
-              </a>
+            <Button onClick={() => logout()} variant="ghost" size="sm" data-testid="button-logout" className="min-h-[44px]">
+              <LogOut className="h-4 w-4" />
+              <span className="hidden sm:inline ml-2">Sign Out</span>
             </Button>
           </div>
         </div>

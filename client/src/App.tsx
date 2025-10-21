@@ -1,59 +1,102 @@
 import { Switch, Route } from "wouter";
-import { queryClient } from "./lib/queryClient";
+import { queryClient, setTokenGetter } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { ClerkProvider, SignedIn, SignedOut, ClerkLoading, ClerkLoaded } from "@clerk/clerk-react";
+import { KindeProvider } from "@kinde-oss/kinde-auth-react";
+import { useKindeAuth } from "@kinde-oss/kinde-auth-react";
+import { useEffect } from "react";
 import NotFound from "@/pages/not-found";
 import Landing from "@/pages/landing";
 import Dashboard from "@/pages/dashboard";
 import Comparison from "@/pages/comparison";
 import Album from "@/pages/album";
-import { Loader2 } from "lucide-react";
 
-// Get Clerk publishable key from environment
-const CLERK_PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+// Get Kinde configuration from environment
+const KINDE_DOMAIN = import.meta.env.VITE_KINDE_DOMAIN;
+const KINDE_CLIENT_ID = import.meta.env.VITE_KINDE_CLIENT_ID;
+const KINDE_REDIRECT_URL = import.meta.env.VITE_KINDE_REDIRECT_URL;
+const KINDE_LOGOUT_REDIRECT_URL = import.meta.env.VITE_KINDE_LOGOUT_REDIRECT_URL;
 
-if (!CLERK_PUBLISHABLE_KEY) {
-  console.error("Missing VITE_CLERK_PUBLISHABLE_KEY environment variable");
-  throw new Error("Missing Clerk Publishable Key. Please set VITE_CLERK_PUBLISHABLE_KEY in your environment.");
+if (!KINDE_DOMAIN || !KINDE_CLIENT_ID) {
+  console.error("Missing Kinde environment variables");
+  throw new Error("Missing Kinde configuration. Please set VITE_KINDE_DOMAIN and VITE_KINDE_CLIENT_ID in your environment.");
+}
+
+// Component to set up token getter for API requests
+function TokenSetup() {
+  const { getToken } = useKindeAuth();
+
+  useEffect(() => {
+    // Set the token getter function for all API requests
+    setTokenGetter(async () => {
+      try {
+        const token = await getToken();
+        return token || null;
+      } catch (error) {
+        console.error("Error getting Kinde token:", error);
+        return null;
+      }
+    });
+  }, [getToken]);
+
+  return null;
+}
+
+function ProtectedRoute({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated, isLoading } = useKindeAuth();
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="text-center">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent mx-auto mb-4" />
+          <p className="text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <Landing />;
+  }
+
+  return <>{children}</>;
 }
 
 function Router() {
-  console.log("Router rendering");
+  const { isAuthenticated } = useKindeAuth();
 
   return (
-    <Switch>
-      <Route path="/">
-        <SignedOut>
-          <Landing />
-        </SignedOut>
-        <SignedIn>
-          <Dashboard />
-        </SignedIn>
-      </Route>
-      <Route path="/album">
-        <SignedIn>
-          <Album />
-        </SignedIn>
-      </Route>
-      <Route path="/session/:sessionId/compare">
-        <SignedIn>
-          <Comparison />
-        </SignedIn>
-      </Route>
-      <Route component={NotFound} />
-    </Switch>
+    <>
+      <TokenSetup />
+      <Switch>
+        <Route path="/">
+          {isAuthenticated ? <Dashboard /> : <Landing />}
+        </Route>
+        <Route path="/album">
+          <ProtectedRoute>
+            <Album />
+          </ProtectedRoute>
+        </Route>
+        <Route path="/session/:sessionId/compare">
+          <ProtectedRoute>
+            <Comparison />
+          </ProtectedRoute>
+        </Route>
+        <Route component={NotFound} />
+      </Switch>
+    </>
   );
 }
 
 function App() {
-  console.log("App rendering, Clerk key:", CLERK_PUBLISHABLE_KEY ? "present" : "missing");
-
   return (
-    <ClerkProvider
-      publishableKey={CLERK_PUBLISHABLE_KEY}
-      afterSignOutUrl="/"
+    <KindeProvider
+      clientId={KINDE_CLIENT_ID}
+      domain={KINDE_DOMAIN}
+      redirectUri={KINDE_REDIRECT_URL}
+      logoutUri={KINDE_LOGOUT_REDIRECT_URL}
     >
       <QueryClientProvider client={queryClient}>
         <TooltipProvider>
@@ -61,7 +104,7 @@ function App() {
           <Router />
         </TooltipProvider>
       </QueryClientProvider>
-    </ClerkProvider>
+    </KindeProvider>
   );
 }
 

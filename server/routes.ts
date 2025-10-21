@@ -2,8 +2,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { setupAuth, isAuthenticated, handleClerkWebhook, syncUserToDatabase } from "./clerkAuth";
-import { getAuth } from "@clerk/express";
+import { setupAuth, isAuthenticated, syncUserToDatabase } from "./kindeAuth";
 import {
   ObjectStorageService,
   ObjectNotFoundError,
@@ -17,36 +16,24 @@ import { authLimiter, analysisLimiter, uploadLimiter, apiLimiter } from "./middl
 import { validateUUID } from "./middleware/security";
 
 export async function registerRoutes(app: Express): Promise<Server> {
-  // Setup Clerk authentication middleware
+  // Setup Kinde authentication middleware
   setupAuth(app);
-
-  // Clerk webhook endpoint (must be before other routes)
-  app.post('/api/webhooks/clerk', handleClerkWebhook);
 
   // Auth routes
   app.get('/api/auth/user', apiLimiter, isAuthenticated, asyncHandler(async (req: any, res) => {
-    const auth = getAuth(req);
-    const userId = auth.userId;
-    
-    // Get or create user in database
-    let user = await storage.getUser(userId);
-    
-    // If user doesn't exist in our DB yet, sync from Clerk
-    if (!user) {
-      // Get user info from Clerk (available in req.auth)
-      await syncUserToDatabase(userId, {
-        email: (req as any).auth?.sessionClaims?.email,
-        firstName: (req as any).auth?.sessionClaims?.firstName,
-        lastName: (req as any).auth?.sessionClaims?.lastName,
-        profileImageUrl: (req as any).auth?.sessionClaims?.profileImageUrl,
-      });
-      user = await storage.getUser(userId);
+    const userId = req.userId;
+
+    if (!userId) {
+      throw new AppError(401, "Unauthorized");
     }
-    
+
+    // Get user from database (already synced by isAuthenticated middleware)
+    const user = await storage.getUser(userId);
+
     if (!user) {
       throw new AppError(404, "User not found");
     }
-    
+
     res.json(user);
   }));
 
