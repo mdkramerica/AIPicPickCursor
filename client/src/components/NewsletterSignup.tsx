@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useConvertKit } from "@/hooks/useConvertKit";
+import { useKindeAuth } from "@kinde-oss/kinde-auth-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Mail, Loader2 } from "lucide-react";
+import { Mail, Loader2, Sparkles } from "lucide-react";
 
 interface NewsletterSignupProps {
   title?: string;
@@ -21,16 +22,58 @@ export function NewsletterSignup({
   compact = false,
   onSuccess,
 }: NewsletterSignupProps) {
-  const { user } = useAuth();
-  const { subscribe, isSubscribing, isSubscribed } = useConvertKit();
+  const { user, isAuthenticated, isLoading: authLoading } = useAuth();
+  const { login } = useKindeAuth();
+  const { subscribe, isSubscribing, isSubscribed, isAutoSubscribed } = useConvertKit();
   
   const [email, setEmail] = useState(user?.email || "");
   const [firstName, setFirstName] = useState(user?.firstName || "");
   const [emailConsent, setEmailConsent] = useState(false);
   const [marketingConsent, setMarketingConsent] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  // Show loading state while checking authentication
+  if (authLoading) {
+    return (
+      <Card>
+        <CardContent className="pt-6">
+          <div className="flex items-center justify-center py-4">
+            <Loader2 className="h-6 w-6 animate-spin" />
+            <span className="ml-2">Loading...</span>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // Show login prompt if not authenticated
+  if (!isAuthenticated) {
+    return (
+      <Card>
+        <CardContent className="pt-6">
+          <div className="text-center py-4">
+            <Mail className="h-8 w-8 mx-auto mb-2 text-gray-400" />
+            <p className="text-sm text-gray-600 mb-2">
+              Please sign in to subscribe to email updates
+            </p>
+            <Button 
+              onClick={() => login()}
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              Sign In
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    console.log('📧 Newsletter signup: Submitting form');
+    console.log('📧 User authenticated:', isAuthenticated);
+    console.log('📧 User email:', email);
+    console.log('📧 Email consent:', emailConsent);
     
     subscribe(
       {
@@ -43,6 +86,7 @@ export function NewsletterSignup({
       },
       {
         onSuccess: () => {
+          console.log('📧 Newsletter signup: Success callback');
           onSuccess?.();
         },
       }
@@ -54,8 +98,17 @@ export function NewsletterSignup({
       <Card className={compact ? "border-green-200 bg-green-50" : ""}>
         <CardContent className={compact ? "pt-6" : "pt-6"}>
           <div className="flex items-center gap-3 text-green-700">
-            <Mail className="h-5 w-5" />
-            <p className="font-medium">You're subscribed! Check your inbox for updates.</p>
+            {isAutoSubscribed ? (
+              <Sparkles className="h-5 w-5" />
+            ) : (
+              <Mail className="h-5 w-5" />
+            )}
+            <p className="font-medium">
+              {isAutoSubscribed 
+                ? "You're automatically subscribed! 🎉 You'll receive photo tips and updates."
+                : "You're subscribed! Check your inbox for updates."
+              }
+            </p>
           </div>
         </CardContent>
       </Card>

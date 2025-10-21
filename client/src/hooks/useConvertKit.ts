@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "./use-toast";
+import { apiRequest } from "@/lib/queryClient";
 
 interface ConvertKitSettings {
   id: string;
@@ -7,6 +8,7 @@ interface ConvertKitSettings {
   subscriberId?: string;
   emailConsent: boolean;
   marketingConsent: boolean;
+  autoSubscribed: boolean;
   tags?: string[];
   createdAt: Date;
   updatedAt: Date;
@@ -34,35 +36,28 @@ export function useConvertKit() {
   const { data: settings, isLoading } = useQuery<ConvertKitSettings | null>({
     queryKey: ['/api/convertkit/settings'],
     queryFn: async () => {
-      const response = await fetch('/api/convertkit/settings', {
-        credentials: 'include',
-      });
-      
-      if (!response.ok) {
-        if (response.status === 404) return null;
-        throw new Error('Failed to fetch settings');
+      try {
+        const response = await apiRequest('GET', '/api/convertkit/settings');
+        return response.json();
+      } catch (error: any) {
+        if (error.message.includes('401')) return null;
+        throw error;
       }
-      
-      return response.json();
     },
   });
 
   // Subscribe to ConvertKit
   const subscribeMutation = useMutation({
     mutationFn: async (data: SubscribeRequest) => {
-      const response = await fetch('/api/convertkit/subscribe', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(data),
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || 'Failed to subscribe');
+      console.log('🔔 Subscribing to ConvertKit:', data);
+      try {
+        const response = await apiRequest('POST', '/api/convertkit/subscribe', data);
+        console.log('✅ ConvertKit subscription response:', response);
+        return response.json();
+      } catch (error) {
+        console.error('❌ ConvertKit subscription error:', error);
+        throw error;
       }
-
-      return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/convertkit/settings'] });
@@ -72,6 +67,7 @@ export function useConvertKit() {
       });
     },
     onError: (error: Error) => {
+      console.error('❌ ConvertKit subscription failed:', error);
       toast({
         title: "Subscription failed",
         description: error.message,
@@ -83,18 +79,7 @@ export function useConvertKit() {
   // Update ConvertKit settings
   const updateSettingsMutation = useMutation({
     mutationFn: async (data: UpdateSettingsRequest) => {
-      const response = await fetch('/api/convertkit/settings', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(data),
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || 'Failed to update settings');
-      }
-
+      const response = await apiRequest('PATCH', '/api/convertkit/settings', data);
       return response.json();
     },
     onSuccess: (data, variables) => {
@@ -129,5 +114,6 @@ export function useConvertKit() {
     updateSettings: updateSettingsMutation.mutate,
     isUpdating: updateSettingsMutation.isPending,
     isSubscribed: settings?.emailConsent ?? false,
+    isAutoSubscribed: settings?.autoSubscribed ?? false,
   };
 }

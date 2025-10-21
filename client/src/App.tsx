@@ -27,13 +27,15 @@ if (!KINDE_DOMAIN || !KINDE_CLIENT_ID) {
 
 // Component to set up token getter for API requests
 function TokenSetup() {
-  const { getToken, isAuthenticated } = useKindeAuth();
+  const { getToken } = useKindeAuth();
 
   useEffect(() => {
     // Set the token getter function for all API requests
+    // We only depend on getToken, and it internally handles auth state
+    console.log("🔑 TokenSetup: Setting up token getter");
     setTokenGetter(async () => {
       try {
-        console.log("🔑 TokenSetup: Getting token, isAuthenticated:", isAuthenticated);
+        console.log("🔑 TokenSetup: Getting token from Kinde");
         const token = await getToken();
         console.log("🔑 TokenSetup: Got token:", token ? `${token.substring(0, 20)}...` : "null");
         return token || null;
@@ -42,7 +44,7 @@ function TokenSetup() {
         return null;
       }
     });
-  }, [getToken, isAuthenticated]);
+  }, [getToken]);
 
   return null;
 }

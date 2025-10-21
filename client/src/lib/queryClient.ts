@@ -5,6 +5,7 @@ let getAccessToken: (() => Promise<string | null>) | null = null;
 
 export function setTokenGetter(tokenGetter: () => Promise<string | null>) {
   getAccessToken = tokenGetter;
+  console.log("🔑 Token getter set successfully");
 }
 
 async function throwIfResNotOk(res: Response) {
@@ -15,7 +16,15 @@ async function throwIfResNotOk(res: Response) {
 }
 
 async function getAuthHeaders(): Promise<Record<string, string>> {
-  const token = getAccessToken ? await getAccessToken() : null;
+  console.log("🔑 getAuthHeaders: Getting token, getter exists:", !!getAccessToken);
+  
+  if (!getAccessToken) {
+    console.warn("⚠️ getAuthHeaders: Token getter not initialized yet");
+    return {};
+  }
+
+  const token = await getAccessToken();
+  console.log("🔑 getAuthHeaders: Got token:", token ? `${token.substring(0, 20)}...` : "null");
 
   if (token) {
     return {
@@ -23,6 +32,7 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
     };
   }
 
+  console.warn("⚠️ getAuthHeaders: No token available");
   return {};
 }
 
@@ -31,11 +41,15 @@ export async function apiRequest(
   url: string,
   data?: unknown | undefined,
 ): Promise<Response> {
+  console.log(`🌐 API Request: ${method} ${url}`);
+  
   const authHeaders = await getAuthHeaders();
   const headers = {
     ...authHeaders,
     ...(data ? { "Content-Type": "application/json" } : {}),
   };
+
+  console.log(`🌐 Request headers:`, Object.keys(headers));
 
   const res = await fetch(url, {
     method,
@@ -44,6 +58,7 @@ export async function apiRequest(
     credentials: "include",
   });
 
+  console.log(`🌐 Response status: ${res.status}`);
   await throwIfResNotOk(res);
   return res;
 }
