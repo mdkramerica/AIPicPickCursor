@@ -53,34 +53,54 @@ export function ObjectUploader({
       headers: {}, // Will be set dynamically before upload
     });
 
-    // When files are added, get token and update headers, then upload
+    // Debounce timer for handling multiple file additions
+    let uploadTimer: NodeJS.Timeout | null = null;
+
+    // When files are added, debounce and then get token and upload
     uppyInstance.on("files-added", async (files) => {
-      console.log("📁 Files added:", files.length);
-      try {
-        console.log("🔑 Getting token for upload...");
-        const token = await getTokenRef.current();
-        console.log("🔑 Token retrieved:", token ? `${token.substring(0, 20)}...` : 'NO TOKEN');
+      console.log("📁 Files added:", files.length, "- Total files in queue:", Object.keys(uppyInstance.getState().files).length);
 
-        // Update XHRUpload headers with fresh token
-        const xhrPlugin = uppyInstance.getPlugin('XHRUpload');
-        if (xhrPlugin && token) {
-          xhrPlugin.setOptions({
-            headers: {
-              'Authorization': `Bearer ${token}`
-            }
-          });
-          console.log("✅ Authorization header set, starting upload...");
-
-          // Now trigger the upload
-          uppyInstance.upload();
-        } else {
-          console.error("❌ No token or XHR plugin not found");
-          uppyInstance.info("Authentication failed - please refresh and try again", "error", 5000);
-        }
-      } catch (error) {
-        console.error("❌ Error getting token:", error);
-        uppyInstance.info("Failed to get authentication token", "error", 5000);
+      // Clear any existing timer
+      if (uploadTimer) {
+        clearTimeout(uploadTimer);
       }
+
+      // Wait 100ms for all files to be added, then proceed with upload
+      uploadTimer = setTimeout(async () => {
+        const totalFiles = Object.keys(uppyInstance.getState().files).length;
+        console.log("⏰ Upload timer triggered, total files to upload:", totalFiles);
+
+        if (totalFiles === 0) {
+          console.log("⚠️ No files to upload");
+          return;
+        }
+
+        try {
+          console.log("🔑 Getting token for upload...");
+          const token = await getTokenRef.current();
+          console.log("🔑 Token retrieved:", token ? `${token.substring(0, 20)}...` : 'NO TOKEN');
+
+          // Update XHRUpload headers with fresh token
+          const xhrPlugin = uppyInstance.getPlugin('XHRUpload');
+          if (xhrPlugin && token) {
+            xhrPlugin.setOptions({
+              headers: {
+                'Authorization': `Bearer ${token}`
+              }
+            });
+            console.log("✅ Authorization header set, starting upload of", totalFiles, "files...");
+
+            // Now trigger the upload
+            uppyInstance.upload();
+          } else {
+            console.error("❌ No token or XHR plugin not found");
+            uppyInstance.info("Authentication failed - please refresh and try again", "error", 5000);
+          }
+        } catch (error) {
+          console.error("❌ Error getting token:", error);
+          uppyInstance.info("Failed to get authentication token", "error", 5000);
+        }
+      }, 100);
     });
 
     uppyInstance.on("upload", () => {
