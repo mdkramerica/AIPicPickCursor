@@ -225,8 +225,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const userId = req.userId;
     const r2Storage = new R2StorageService();
     try {
+      console.log(`📥 Object download request: ${req.path} from user ${userId}`);
       const normalizedPath = r2Storage.normalizeObjectPath(req.path);
+      console.log(`🔄 Normalized path: ${normalizedPath}`);
       const objectKey = r2Storage.getObjectKeyFromPath(normalizedPath);
+      console.log(`🔑 Object key: ${objectKey}`);
 
       const canAccess = await r2Storage.canAccessObject({
         userId: userId,
@@ -235,13 +238,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       if (!canAccess) {
+        console.error(`❌ Access denied for user ${userId} to object ${objectKey}`);
         return res.sendStatus(403);
       }
 
+      console.log(`✅ Access granted, downloading object ${objectKey}`);
       await r2Storage.downloadObject(objectKey, res);
     } catch (error) {
-      console.error("Error checking object access:", error);
+      console.error("❌ Error in object download route:", error);
       if (error instanceof ObjectNotFoundError) {
+        console.error(`❌ Object not found: ${req.path}`);
         return res.sendStatus(404);
       }
       return res.sendStatus(500);
