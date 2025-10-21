@@ -114,7 +114,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           tags: [
             process.env.CONVERTKIT_TAG_ID_PHOTO_ANALYSIS,
             process.env.CONVERTKIT_TAG_ID_NEWSLETTER,
-          ].filter(Boolean),
+          ].filter((tag): tag is string => Boolean(tag)),
         });
 
         // Send welcome email
@@ -197,8 +197,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const response = await convertKitService.sendPhotoAnalysisEmail({
         sessionId,
         campaignType: campaignType || 'analysis_complete',
-        userEmail: user.email,
-        userName: user.firstName,
+        userEmail: user?.email || '',
+        userName: user?.firstName || '',
         analysisResults: {
           photoCount: photos.length,
           bestPhotoUrl: bestPhoto?.fileUrl,
@@ -331,6 +331,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const userId = req.userId;
     const sessionId = req.params.sessionId;
 
+    console.log(`🔍 Presigned URL request for session: ${sessionId} by user: ${userId}`);
+
     // Verify user owns this session
     const session = await storage.getSession(sessionId);
     if (!session || session.userId !== userId) {
@@ -339,31 +341,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     // Get photos
     const photos = await storage.getPhotosBySession(sessionId);
+    console.log(`📸 Found ${photos.length} photos in session ${sessionId}`);
 
     // Generate presigned URLs for each photo
     const r2Storage = new R2StorageService();
     const photosWithPresignedUrls = await Promise.all(
       photos.map(async (photo) => {
         try {
+          console.log(`🔑 Processing photo ${photo.id}, fileUrl: ${photo.fileUrl}`);
           // Extract object key from fileUrl
           const objectKey = r2Storage.getObjectKeyFromPath(photo.fileUrl);
+          console.log(`📦 Object key: ${objectKey}`);
+
           // Generate presigned URL (valid for 1 hour)
           const presignedUrl = await r2Storage.getDownloadURL(objectKey, 3600);
+          console.log(`✅ Generated presigned URL for ${photo.id}: ${presignedUrl.substring(0, 100)}...`);
 
           return {
             photoId: photo.id,
             presignedUrl,
           };
         } catch (error) {
-          console.error(`Error generating presigned URL for photo ${photo.id}:`, error);
+          console.error(`❌ Error generating presigned URL for photo ${photo.id}:`, error);
+          console.error(`❌ Error details:`, {
+            name: error instanceof Error ? error.name : 'Unknown',
+            message: error instanceof Error ? error.message : String(error),
+            stack: error instanceof Error ? error.stack : 'No stack',
+          });
           return {
             photoId: photo.id,
             presignedUrl: null,
-            error: 'Failed to generate URL',
+            error: error instanceof Error ? error.message : 'Failed to generate URL',
           };
         }
       })
     );
+
+    const successCount = photosWithPresignedUrls.filter(p => p.presignedUrl).length;
+    const failCount = photosWithPresignedUrls.filter(p => !p.presignedUrl).length;
+    console.log(`📊 Presigned URL generation complete: ${successCount} success, ${failCount} failed`);
 
     res.json({ photos: photosWithPresignedUrls });
   }));
@@ -566,8 +582,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           await convertKitService.sendPhotoAnalysisEmail({
             sessionId: req.params.sessionId,
             campaignType: 'analysis_complete',
-            userEmail: user.email,
-            userName: user.firstName,
+            userEmail: user?.email || '',
+            userName: user?.firstName || '',
             analysisResults: {
               photoCount: photos.length,
               bestPhotoUrl: bestPhoto?.fileUrl,
@@ -1032,7 +1048,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Use the existing photo analysis service to find the best photo in this group
       const { analyses, bestPhotoId } = await photoAnalysisService.analyzeSession(
         `${group.sessionId}-${groupId}`, // Unique session ID for group analysis
-        validPhotos.map(p => ({ id: p.id, fileUrl: p.fileUrl }))
+        validPhotos.map(p => ({ id: p!.id, fileUrl: p!.fileUrl }))
       );
       
       // Update the group with the best photo
