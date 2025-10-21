@@ -17,6 +17,18 @@ type AlbumItem = {
   bestPhoto: Photo;
 };
 
+type PhotoGroup = {
+  id: string;
+  sessionId: string;
+  name: string;
+  groupType: 'auto' | 'manual' | 'merged';
+  confidenceScore: number;
+  similarityScore: number;
+  bestPhotoId?: string;
+  photos: Photo[];
+  createdAt: string;
+};
+
 type PhotoWithAnalysis = {
   id: string;
   fileUrl: string;
@@ -51,6 +63,7 @@ export default function Album() {
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [photoToDelete, setPhotoToDelete] = useState<string | null>(null);
   const [presignedUrls, setPresignedUrls] = useState<Record<string, string>>({});
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
 
   // Fetch album data
   const { data: album, isLoading } = useQuery<AlbumItem[]>({
@@ -60,8 +73,22 @@ export default function Album() {
   // Fetch photos for selected session
   const { data: sessionPhotos } = useQuery<PhotoWithAnalysis[]>({
     queryKey: ["/api/sessions", selectedSessionId, "photos"],
+    enabled: !!selectedSessionId && !selectedGroupId,
+  });
+
+  // Fetch groups for selected session
+  const { data: sessionGroups } = useQuery<{ groups: PhotoGroup[] }>({
+    queryKey: ["/api/sessions", selectedSessionId, "groups"],
     enabled: !!selectedSessionId,
   });
+
+  // Get the currently selected session or group
+  const selectedSession = album?.find(s => s.session.id === selectedSessionId);
+  const selectedGroup = sessionGroups?.groups?.find(g => g.id === selectedGroupId);
+  
+  // Determine which photos to display - if group selected, show group photos, otherwise show session photos
+  const photosToDisplay = selectedGroup?.photos || sessionPhotos || [];
+  const isGroupView = !!selectedGroupId;
 
   // Fetch presigned URLs for selected session
   const { data: presignedData } = useQuery<{
@@ -243,20 +270,98 @@ export default function Album() {
       </main>
 
       {/* Session Detail Dialog */}
-      <Dialog open={!!selectedSessionId} onOpenChange={(open) => !open && setSelectedSessionId(null)}>
+      <Dialog open={!!selectedSessionId} onOpenChange={(open) => {
+  if (!open) {
+    setSelectedSessionId(null);
+    setSelectedGroupId(null);
+  }
+}}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto" data-testid="dialog-session-detail">
           <DialogHeader>
             <DialogTitle data-testid="text-dialog-title">
-              {album?.find(a => a.session.id === selectedSessionId)?.session.name || "Session Photos"}
+              {isGroupView ? selectedGroup?.name || "Group Photos" : (selectedSession?.session.name || "Session Photos")}
             </DialogTitle>
             <DialogDescription>
-              Select a different photo to mark as best, or delete photos from this session
+              {isGroupView 
+                ? "Photos in this group. Click on a photo to view it in full size."
+                : (sessionGroups?.groups?.length > 0 
+                  ? "Click on a group to view its photos, or view all photos below"
+                  : "Select a different photo to mark as best, or delete photos from this session")
+              }
             </DialogDescription>
           </DialogHeader>
           
-          {sessionPhotos && (
+          {/* Show groups if they exist and no group is selected */}
+          {sessionGroups?.groups && sessionGroups.groups.length > 0 && !isGroupView && (
+            <div className="mb-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold">Photo Groups ({sessionGroups.groups?.length || 0})</h3>
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => setSelectedGroupId(null)}
+                >
+                  View All Photos
+                </Button>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {sessionGroups.groups.map((group) => (
+                  <Card 
+                    key={group.id} 
+                    className="cursor-pointer hover:shadow-md transition-shadow"
+                    onClick={() => setSelectedGroupId(group.id)}
+                  >
+                    <div className="aspect-square relative">
+                      {group.photos && group.photos.length > 0 && (() => {
+                        const bestPhoto = group.photos.find(p => p.id === group.bestPhotoId) || group.photos[0];
+                        return (
+                          <img
+                            src={getImageUrl(bestPhoto)}
+                            alt={bestPhoto.originalFilename || "Group photo"}
+                            className="w-full h-full object-cover rounded-t-md"
+                          />
+                        );
+                      })()}
+                      {group.bestPhotoId && group.photos && group.photos.length > 1 && (
+                        <div className="absolute top-2 right-2 bg-primary text-primary-foreground px-2 py-1 rounded text-xs font-medium">
+                          BEST
+                        </div>
+                      )}
+                    </div>
+                    <div className="p-4">
+                      <h4 className="font-medium text-sm mb-1">{group.name}</h4>
+                      <p className="text-xs text-muted-foreground">
+                        {group.photos?.length || 0} photos • {group.groupType}
+                      </p>
+                      {group.confidenceScore && (
+                        <p className="text-xs text-muted-foreground">
+                          Confidence: {Math.round(group.confidenceScore * 100)}%
+                        </p>
+                      )}
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Back to groups button when viewing a specific group */}
+          {isGroupView && sessionGroups?.groups && sessionGroups.groups.length > 0 && (
+            <div className="mb-4">
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => setSelectedGroupId(null)}
+                className="flex items-center gap-2"
+              >
+                ← Back to Groups
+              </Button>
+            </div>
+          )}
+          
+          {(photosToDisplay && photosToDisplay.length > 0) && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
-              {sessionPhotos.map((photo) => (
+              {photosToDisplay.map((photo) => (
                 <Card key={photo.id} className={photo.isSelectedBest ? "border-primary border-2" : ""} data-testid={`card-photo-${photo.id}`}>
                   <div className="aspect-square relative">
                     <img
