@@ -1,6 +1,13 @@
 // Load environment variables from .env file
 import "dotenv/config";
 
+// Polyfill global crypto for jose library in ESM mode
+// jose expects global crypto to be available, but in Node.js ESM it needs to be explicitly set
+import { webcrypto } from "node:crypto";
+if (!globalThis.crypto) {
+  globalThis.crypto = webcrypto as any;
+}
+
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
