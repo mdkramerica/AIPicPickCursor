@@ -1,6 +1,6 @@
 import { ConvertKitWebhookEvent } from '../shared/convertKitTypes';
 import { db } from './db';
-import { convertKitSettings } from '../shared/schema';
+import { convertKitSettings, users } from '../shared/schema';
 import { eq } from 'drizzle-orm';
 import { logger } from './middleware/logger';
 import crypto from 'node:crypto';
@@ -81,7 +81,7 @@ export class ConvertKitWebhookHandler {
       emailConsent: true,
       marketingConsent: true,
       unsubscribedAt: null, // Clear unsubscribed date if they resubscribe
-    });
+    }, subscriber.email);
 
     logger.info('Subscriber activated', { subscriberId: subscriber.id, email: subscriber.email });
   }
@@ -94,7 +94,7 @@ export class ConvertKitWebhookHandler {
       emailConsent: true,
       marketingConsent: true,
       unsubscribedAt: null,
-    });
+    }, subscriber.email);
 
     logger.info('New subscriber', { subscriberId: subscriber.id, email: subscriber.email });
 
@@ -110,7 +110,7 @@ export class ConvertKitWebhookHandler {
       emailConsent: false,
       marketingConsent: false,
       unsubscribedAt: new Date(),
-    });
+    }, subscriber.email);
 
     logger.info('Subscriber unsubscribed', { subscriberId: subscriber.id, email: subscriber.email });
 
@@ -129,7 +129,7 @@ export class ConvertKitWebhookHandler {
       emailConsent: true,
       marketingConsent: true,
       unsubscribedAt: null,
-    });
+    }, subscriber.email);
 
     logger.info('Subscriber from form', { 
       subscriberId: subscriber.id, 
@@ -143,7 +143,8 @@ export class ConvertKitWebhookHandler {
 
   private async upsertSubscriberSettings(
     subscriberId: string, 
-    settings: Partial<typeof convertKitSettings.$inferInsert>
+    settings: Partial<typeof convertKitSettings.$inferInsert>,
+    email?: string
   ): Promise<void> {
     // First try to find existing settings by subscriber ID
     const existing = await db
@@ -162,45 +163,33 @@ export class ConvertKitWebhookHandler {
         })
         .where(eq(convertKitSettings.subscriberId, subscriberId));
     } else {
-      // Try to find user by email (this would require joining with users table)
-      // For now, we'll create a record with subscriber ID as userId
-      // In a real implementation, you'd have proper user lookup
-      
-      // Find the user by email through the users table
-      // This is a simplified approach - you'd need to adjust based on your user schema
-      const userByEmail = await this.findUserByEmail(event.data.subscriber.email);
-      
-      if (userByEmail) {
-        await db.insert(convertKitSettings).values({
-          userId: userByEmail.id,
-          ...settings,
-        });
-      } else {
-        logger.warn('Could not find user for ConvertKit subscriber', {
-          subscriberId,
-          email: event.data.subscriber.email,
-        });
+      // Try to find user by email through the users table
+      if (email) {
+        const userByEmail = await this.findUserByEmail(email);
+        
+        if (userByEmail) {
+          await db.insert(convertKitSettings).values({
+            userId: userByEmail.id,
+            ...settings,
+          });
+        } else {
+          logger.warn('Could not find user for ConvertKit subscriber', {
+            subscriberId,
+            email,
+          });
+        }
       }
     }
   }
 
   private async findUserByEmail(email: string): Promise<{ id: string } | null> {
-    // This is a placeholder - you'd implement this based on your user schema
-    // You might need to import the users table and query it
+    const [user] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.email, email))
+      .limit(1);
     
-    // For now, return null - you'll need to implement this properly
-    // based on your actual user table structure
-    
-    // Example implementation (adjust based on your schema):
-    // const user = await db
-    //   .select({ id: users.id })
-    //   .from(users)
-    //   .where(eq(users.email, email))
-    //   .limit(1);
-    // 
-    // return user[0] || null;
-    
-    return null;
+    return user || null;
   }
 }
 

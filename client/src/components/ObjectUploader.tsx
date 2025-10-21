@@ -28,9 +28,13 @@ export function ObjectUploader({
   const [showModal, setShowModal] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { getToken } = useKindeAuth();
+  const getTokenRef = useRef(getToken);
 
-  const [uppy] = useState(() =>
-    new Uppy({
+  // Update ref when getToken changes
+  getTokenRef.current = getToken;
+
+  const [uppy] = useState(() => {
+    const uppyInstance = new Uppy({
       restrictions: {
         maxNumberOfFiles,
         maxFileSize,
@@ -40,19 +44,26 @@ export function ObjectUploader({
       meta: {
         type: 'photo'
       },
-    })
-      .use(XHRUpload, {
-        endpoint: '/api/objects/upload',
-        fieldName: 'file',
-        formData: true,
-        headers: async () => {
-          // Get the access token from Kinde
-          const token = await getToken();
+    });
+
+    uppyInstance.use(XHRUpload, {
+      endpoint: '/api/objects/upload',
+      fieldName: 'file',
+      formData: true,
+      headers: (file) => {
+        // Get the access token from Kinde (synchronously via ref)
+        console.log("🔑 Getting token for upload...");
+        return getTokenRef.current().then(token => {
+          console.log("🔑 Token retrieved:", token ? `${token.substring(0, 20)}...` : 'NO TOKEN');
           return {
             'Authorization': token ? `Bearer ${token}` : '',
           };
-        },
-      })
+        });
+      },
+    });
+
+    return uppyInstance;
+  })
       .on("upload", () => {
         console.log("🚀 Upload started");
       })

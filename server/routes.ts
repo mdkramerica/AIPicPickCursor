@@ -450,6 +450,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
         bestPhotoId,
       });
 
+      // Send analysis completion email if user has consented
+      try {
+        const settings = await storage.getConvertKitSettings(userId);
+        if (settings?.emailConsent) {
+          const user = await storage.getUser(userId);
+          const bestPhoto = photos.find(p => p.id === bestPhotoId);
+
+          await convertKitService.sendPhotoAnalysisEmail({
+            sessionId: req.params.sessionId,
+            campaignType: 'analysis_complete',
+            userEmail: user.email,
+            userName: user.firstName,
+            analysisResults: {
+              photoCount: photos.length,
+              bestPhotoUrl: bestPhoto?.fileUrl,
+              qualityScore: bestPhoto?.qualityScore ? parseFloat(bestPhoto.qualityScore) : undefined,
+              facesDetected: analyses.reduce((total, analysis) => total + analysis.faces.length, 0),
+            },
+          });
+        }
+      } catch (emailError) {
+        logger.error('Failed to send analysis completion email', {
+          sessionId: req.params.sessionId,
+          userId,
+          error: emailError instanceof Error ? emailError.message : 'Unknown error',
+        });
+        // Don't fail the request if email fails
+      }
+
       res.json({
         sessionId: req.params.sessionId,
         bestPhotoId,
