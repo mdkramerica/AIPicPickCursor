@@ -86,6 +86,15 @@ export default function Album() {
   const selectedSession = album?.find(s => s.session.id === selectedSessionId);
   const selectedGroup = sessionGroups?.groups?.find(g => g.id === selectedGroupId);
   
+  // Debug logging to see what's in the group data
+  useEffect(() => {
+    if (selectedGroup) {
+      console.log('🔍 Selected Group:', selectedGroup);
+      console.log('🔍 Group Photos:', selectedGroup.photos);
+      console.log('🔍 Group Photos Length:', selectedGroup.photos?.length || 0);
+    }
+  }, [selectedGroup]);
+  
   // Determine which photos to display - if group selected, show group photos, otherwise show session photos
   const photosToDisplay = selectedGroup?.photos || sessionPhotos || [];
   const isGroupView = !!selectedGroupId;
