@@ -818,83 +818,160 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const userId = req.userId;
     const sessionId = req.params.sessionId;
     
-    // Verify user owns this session
-    const session = await storage.getSession(sessionId);
-    if (!session || session.userId !== userId) {
-      throw new AppError(403, "Forbidden");
-    }
-    
-    // Get photos in the session
-    const photos = await storage.getPhotosBySession(sessionId);
-    if (photos.length < 2) {
-      throw new AppError(400, "Need at least 2 photos to perform grouping");
-    }
-    
-    // Get grouping options from request body
-    const { similarityThreshold, targetGroupSize, minGroupSize, maxGroupSize } = req.body;
-    
-    const groupingOptions = {
-      similarityThreshold: similarityThreshold ? parseFloat(similarityThreshold) : undefined,
-      maxGroupSize: maxGroupSize ? parseInt(maxGroupSize) : undefined,
-      minGroupSize: minGroupSize ? parseInt(minGroupSize) : undefined,
-    };
-    
     try {
-      // Perform grouping analysis
-      const clusters = await photoGroupingService.groupSessionPhotos(sessionId, groupingOptions);
+      logger.info(`Starting grouping analysis for session ${sessionId}`, { userId });
       
-      // Update session with grouping metadata
-      await storage.updateSession(sessionId, {
-        bulkMode: true,
-        targetGroupSize: targetGroupSize ? parseInt(targetGroupSize) : 5,
+      // Verify user owns this session
+      const session = await storage.getSession(sessionId);
+      if (!session) {
+        logger.error(`Session not found: ${sessionId}`, { userId });
+        throw new AppError(404, "Session not found");
+      }
+      
+      if (session.userId !== userId) {
+        logger.error(`Access denied for session ${sessionId}`, { userId, sessionUserId: session.userId });
+        throw new AppError(403, "Forbidden");
+      }
+      
+      // Check if session supports bulk mode
+      if (!session.bulkMode) {
+        logger.warn(`Session ${sessionId} not in bulk mode`, { userId });
+        await storage.updateSession(sessionId, { bulkMode: true });
+      }
+      
+      // Get photos in the session
+      const photos = await storage.getPhotosBySession(sessionId);
+      if (photos.length < 2) {
+        logger.warn(`Insufficient photos for grouping: ${photos.length} < 2`, { sessionId, userId });
+        throw new AppError(400, "Need at least 2 photos to perform grouping");
+      }
+      
+      // Get grouping options from request body
+      const { similarityThreshold, targetGroupSize, minGroupSize, maxGroupSize } = req.body;
+      
+      // Validate grouping parameters
+      const groupingOptions = {
+        similarityThreshold: similarityThreshold ? parseFloat(similarityThreshold) : undefined,
+        maxGroupSize: maxGroupSize ? parseInt(maxGroupSize) : undefined,
+        minGroupSize: minGroupSize ? parseInt(minGroupSize) : undefined,
+      };
+      
+      logger.info(`Grouping options configured`, {
+        sessionId,
+        userId,
+        photoCount: photos.length,
+        options: groupingOptions
       });
       
-      // Delete existing groups for this session
-      const existingGroups = await storage.getGroupsBySession(sessionId);
-      await Promise.all(existingGroups.map(group => storage.deleteGroup(group.id)));
+      // Validate photoGroupingService is available
+      if (!photoGroupingService) {
+        logger.error(`photoGroupingService not available`, { sessionId, userId });
+        throw new AppError(500, "Grouping service not initialized");
+      }
+    
+      // Perform grouping analysis with error handling
+      logger.info(`Starting photo grouping service`, { sessionId, userId, photoCount: photos.length });
       
-      // Create new groups from clusters
-      const createdGroups = [];
-      
-      for (const cluster of clusters) {
-        // Create the group
-        const group = await storage.createGroup({
+      try {
+        const clusters = await photoGroupingService.groupSessionPhotos(sessionId, groupingOptions);
+        
+        logger.info(`Grouping analysis completed successfully`, {
           sessionId,
-          name: `Group ${createdGroups.length + 1}`,
-          groupType: 'auto',
-          confidenceScore: cluster.confidence.toString(),
-          similarityScore: cluster.avgSimilarity.toString(),
-          timeWindowStart: cluster.timeWindow.start,
-          timeWindowEnd: cluster.timeWindow.end,
+          userId,
+          clustersFound: clusters.length,
+          photosProcessed: photos.length
         });
         
-        // Add photos to the group
-        for (const photoId of cluster.photoIds) {
-          await storage.addPhotoToGroup(group.id, photoId, {
+        // Update session with grouping metadata
+        await storage.updateSession(sessionId, {
+          bulkMode: true,
+          targetGroupSize: targetGroupSize ? parseInt(targetGroupSize) : 5,
+        });
+        
+        // Delete existing groups for this session
+        const existingGroups = await storage.getGroupsBySession(sessionId);
+        await Promise.all(existingGroups.map(group => storage.deleteGroup(group.id)));
+        
+        logger.info(`Cleared existing groups`, { sessionId, deletedGroups: existingGroups.length });
+        
+        // Create new groups from clusters
+        const createdGroups = [];
+        
+        for (const cluster of clusters) {
+          // Create the group
+          const group = await storage.createGroup({
+            sessionId,
+            name: `Group ${createdGroups.length + 1}`,
+            groupType: 'auto',
             confidenceScore: cluster.confidence.toString(),
+            similarityScore: cluster.avgSimilarity.toString(),
+            timeWindowStart: cluster.timeWindow.start,
+            timeWindowEnd: cluster.timeWindow.end,
+          });
+          
+          // Add photos to the group
+          for (const photoId of cluster.photoIds) {
+            await storage.addPhotoToGroup(group.id, photoId, {
+              confidenceScore: cluster.confidence.toString(),
+            });
+          }
+          
+          createdGroups.push({
+            ...group,
+            photoCount: cluster.photoIds.length,
+            photoIds: cluster.photoIds,
           });
         }
         
-        createdGroups.push({
-          ...group,
-          photoCount: cluster.photoIds.length,
-          photoIds: cluster.photoIds,
+        logger.info(`Successfully created groups`, {
+          sessionId,
+          userId,
+          groupsCreated: createdGroups.length,
+          totalPhotos: createdGroups.reduce((sum, g) => sum + g.photoCount, 0)
         });
+        
+        res.json({
+          sessionId,
+          groups: createdGroups,
+          totalGroups: createdGroups.length,
+          options: groupingOptions,
+        });
+        
+      } catch (groupingError) {
+        logger.error(`Grouping service failed`, {
+          sessionId,
+          userId,
+          error: groupingError instanceof Error ? groupingError.message : 'Unknown error',
+          stack: groupingError instanceof Error ? groupingError.stack : undefined
+        });
+        
+        // Check if it's a TensorFlow.js or canvas dependency issue
+        const errorMessage = groupingError instanceof Error ? groupingError.message.toLowerCase() : '';
+        const isDependencyError = errorMessage.includes('tensorflow') || 
+                                errorMessage.includes('canvas') || 
+                                errorMessage.includes('module') ||
+                                errorMessage.includes('import');
+        
+        if (isDependencyError) {
+          throw new AppError(500, "AI grouping service unavailable due to missing dependencies. Please contact support.");
+        } else {
+          throw new AppError(500, `Grouping analysis failed: ${groupingError instanceof Error ? groupingError.message : 'Unknown error'}`);
+        }
       }
-      
-      res.json({
-        sessionId,
-        groups: createdGroups,
-        totalGroups: createdGroups.length,
-        options: groupingOptions,
-      });
       
     } catch (error) {
       logger.error('Grouping analysis failed', {
         sessionId,
         userId,
         error: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined
       });
+      
+      // Don't re-throw AppError instances
+      if (error instanceof AppError) {
+        throw error;
+      }
+      
       throw new AppError(500, `Grouping analysis failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }));

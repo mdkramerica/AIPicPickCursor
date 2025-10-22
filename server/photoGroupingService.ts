@@ -1,13 +1,51 @@
 // Photo Grouping Service - AI-powered photo grouping algorithm
-import * as tf from '@tensorflow/tfjs-node';
-import * as faceapi from '@vladmandic/face-api';
 import type { Photo, PhotoAnalysisResult, FaceAnalysis } from "@shared/schema";
-import { loadImageFromUrl } from './imageLoader.js';
-import { createCanvas } from 'canvas';
-import path from 'path';
-import { EventEmitter } from 'events';
-import { storage } from './storage';
 import { logger } from './middleware/logger';
+import { EventEmitter } from 'events';
+
+// Try to import dependencies with error handling
+let tf: any = null;
+let faceapi: any = null;
+let createCanvas: any = null;
+let loadImageFromUrl: any = null;
+
+try {
+  tf = require('@tensorflow/tfjs-node');
+  logger.info('TensorFlow.js loaded successfully');
+} catch (error) {
+  logger.error('Failed to load TensorFlow.js', error as Error);
+}
+
+try {
+  faceapi = require('@vladmandic/face-api');
+  logger.info('Face-api.js loaded successfully');
+} catch (error) {
+  logger.error('Failed to load Face-api.js', error as Error);
+}
+
+try {
+  const canvas = require('canvas');
+  createCanvas = canvas.createCanvas;
+  logger.info('Canvas loaded successfully');
+} catch (error) {
+  logger.error('Failed to load Canvas', error as Error);
+}
+
+try {
+  loadImageFromUrl = require('./imageLoader.js').loadImageFromUrl;
+  logger.info('Image loader loaded successfully');
+} catch (error) {
+  logger.error('Failed to load image loader', error as Error);
+}
+
+// Import storage separately to avoid circular dependencies
+let storage: any = null;
+try {
+  storage = require('./storage').storage;
+  logger.info('Storage loaded successfully');
+} catch (error) {
+  logger.error('Failed to load storage', error as Error);
+}
 
 export interface GroupingFeatures {
   photoId: string;
@@ -85,6 +123,24 @@ export class PhotoGroupingService {
   };
 
   /**
+   * Check if all required dependencies are available
+   */
+  checkDependencies(): { available: boolean; missingDependencies: string[] } {
+    const missingDependencies: string[] = [];
+    
+    if (!tf) missingDependencies.push('TensorFlow.js');
+    if (!faceapi) missingDependencies.push('Face-api.js');
+    if (!createCanvas) missingDependencies.push('Canvas');
+    if (!loadImageFromUrl) missingDependencies.push('Image Loader');
+    if (!storage) missingDependencies.push('Storage');
+    
+    return {
+      available: missingDependencies.length === 0,
+      missingDependencies
+    };
+  }
+
+  /**
    * Subscribe to grouping progress updates
    */
   onProgress(sessionId: string, callback: (progress: GroupingProgress) => void): () => void {
@@ -109,6 +165,12 @@ export class PhotoGroupingService {
    */
   async extractFeatures(photo: Photo, analysisData?: PhotoAnalysisResult): Promise<GroupingFeatures> {
     try {
+      // Check if required dependencies are available
+      if (!loadImageFromUrl || !createCanvas) {
+        logger.warn(`Dependencies not available, using fallback feature extraction for photo ${photo.id}`);
+        return this.extractBasicFeatures(photo, analysisData);
+      }
+
       logger.info(`Extracting features for photo ${photo.id}`);
       
       // Load image for visual analysis
@@ -164,8 +226,45 @@ export class PhotoGroupingService {
       return features;
     } catch (error) {
       logger.error(`Failed to extract features for photo ${photo.id}`, error as Error);
-      throw error;
+      // Fallback to basic features if advanced extraction fails
+      return this.extractBasicFeatures(photo, analysisData);
     }
+  }
+
+  /**
+   * Extract basic features when advanced dependencies are not available
+   */
+  private extractBasicFeatures(photo: Photo, analysisData?: PhotoAnalysisResult): GroupingFeatures {
+    logger.info(`Using basic feature extraction for photo ${photo.id}`);
+    
+    // Extract face positions from analysis data
+    const facePositions = analysisData?.faces.map(face => ({
+      x: face.boundingBox.x + face.boundingBox.width / 2,
+      y: face.boundingBox.y + face.boundingBox.height / 2,
+      size: face.boundingBox.width * face.boundingBox.height,
+    })) || [];
+    
+    return {
+      photoId: photo.id,
+      timestamp: photo.createdAt || new Date(),
+      
+      // Visual features (fallback values)
+      colorHistogram: new Array(64).fill(0),
+      compositionScore: 0.5,
+      faceCount: facePositions.length,
+      facePositions,
+      sceneComplexity: 0.5,
+      
+      // Metadata features
+      width: photo.width || 1920,
+      height: photo.height || 1080,
+      aspectRatio: photo.width && photo.height ? photo.width / photo.height : 16/9,
+      fileSize: photo.fileSize || 0,
+      
+      // Existing analysis data
+      qualityScore: parseFloat(photo.qualityScore || '0'),
+      faces: analysisData?.faces || [],
+    };
   }
 
   /**
@@ -579,7 +678,21 @@ export class PhotoGroupingService {
         maxRetries: MAX_RETRIES 
       });
       
+      // Check dependencies
+      const dependencyCheck = this.checkDependencies();
+      if (!dependencyCheck.available) {
+        logger.error(`Missing dependencies for photo grouping`, {
+          sessionId,
+          missingDependencies: dependencyCheck.missingDependencies
+        });
+        throw new Error(`Photo grouping service unavailable due to missing dependencies: ${dependencyCheck.missingDependencies.join(', ')}`);
+      }
+      
       // Get all photos in the session
+      if (!storage) {
+        throw new Error('Storage service not available');
+      }
+      
       const photos = await storage.getPhotosBySession(sessionId);
       
       // Validate parameters
@@ -898,4 +1011,15 @@ export class PhotoGroupingService {
   }
 }
 
+// Initialize service with dependency logging
 export const photoGroupingService = new PhotoGroupingService();
+
+// Log service initialization status
+const deps = photoGroupingService.checkDependencies();
+if (deps.available) {
+  logger.info('PhotoGroupingService initialized successfully with all dependencies');
+} else {
+  logger.warn('PhotoGroupingService initialized with missing dependencies', {
+    missingDependencies: deps.missingDependencies
+  });
+}

@@ -37,57 +37,185 @@ export default function BulkUploadPage() {
     },
   });
 
+  /**
+   * Validate AI dependencies before starting grouping
+   */
+  const validateAIDependencies = async (): Promise<{ available: boolean; errors: string[] }> => {
+    const errors: string[] = [];
+    
+    // Check if Canvas API is available (for image loading)
+    if (!document.createElement('canvas').getContext) {
+      errors.push("Canvas API not available");
+    }
+    
+    // Check if fetch API is available (for network requests)
+    if (typeof fetch === 'undefined') {
+      errors.push("Fetch API not available");
+    }
+    
+    // Check if Image constructor is available (for image loading)
+    if (typeof Image === 'undefined') {
+      errors.push("Image API not available");
+    }
+    
+    // Test basic image loading capability
+    try {
+      const testImage = new Image();
+      testImage.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+      await new Promise((resolve, reject) => {
+        testImage.onload = resolve;
+        testImage.onerror = reject;
+        setTimeout(() => reject(new Error('Image load timeout')), 5000);
+      });
+    } catch (error) {
+      errors.push("Image loading capability check failed");
+    }
+    
+    return {
+      available: errors.length === 0,
+      errors,
+    };
+  };
+
   const handleUploadComplete = async (results: any[]) => {
     console.log("🚀 Bulk upload completed", { sessionId, resultCount: results.length });
     
-    if (sessionId) {
-      const successCount = results.filter(r => r.success).length;
-      toast({
-        title: "Upload complete",
-        description: `Successfully uploaded ${successCount} of ${results.length} photos`,
-      });
-      
-      // Only start grouping if we have successful uploads
-      if (successCount > 0) {
-        console.log("🔍 Starting grouping analysis", { sessionId, photoCount: successCount });
-        
-        // Start grouping analysis using existing endpoint
-        try {
-          const response = await apiRequest("POST", `/api/sessions/${sessionId}/group-analyze`, {
-            similarityThreshold: 0.7,
-            targetGroupSize: 5,
-            minGroupSize: 2,
-            maxGroupSize: 10,
-          });
-          
-          console.log("✅ Grouping analysis started", { response });
-          await response.json();
-          
-          toast({
-            title: "Grouping started",
-            description: `AI is analyzing ${successCount} photos into groups`,
-          });
-        } catch (error) {
-          console.error("❌ Failed to start grouping", { error });
-          toast({
-            title: "Failed to start grouping",
-            description: error instanceof Error ? error.message : "Please try again",
-            variant: "destructive",
-          });
-        }
-      } else {
-        toast({
-          title: "No successful uploads",
-          description: "Please check your files and try again",
-          variant: "destructive",
-        });
-      }
-    } else {
+    if (!sessionId) {
       toast({
         title: "No session available",
         description: "Please refresh and try again",
         variant: "destructive",
       });
+      return;
+    }
+    
+    const successCount = results.filter(r => r.success).length;
+    
+    toast({
+      title: "Upload complete",
+      description: `Successfully uploaded ${successCount} of ${results.length} photos`,
+    });
+    
+    // Only start grouping if we have successful uploads
+    if (successCount === 0) {
+      toast({
+        title: "No successful uploads",
+        description: "Please check your files and try again",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    console.log("🔍 Starting grouping analysis", { sessionId, photoCount: successCount });
+    
+    // 1. DEPENDENCY VALIDATION - Validate AI dependencies before starting
+    console.log("🔧 Validating AI dependencies...");
+    const dependencyCheck = await validateAIDependencies();
+    
+    if (!dependencyCheck.available) {
+      console.error("❌ AI dependencies not available", { errors: dependencyCheck.errors });
+      toast({
+        title: "AI service check failed",
+        description: "Some browser features required for AI grouping are unavailable. Attempting to proceed anyway...",
+        variant: "default",
+      });
+      // Don't block - let the server handle fallbacks
+    } else {
+      console.log("✅ AI dependencies validated successfully");
+    }
+    
+    // 2. ENHANCED ERROR HANDLING - Start grouping with detailed error tracking
+    try {
+      const response = await apiRequest("POST", `/api/sessions/${sessionId}/group-analyze`, {
+        similarityThreshold: 0.7,
+        targetGroupSize: 5,
+        minGroupSize: 2,
+        maxGroupSize: 10,
+      });
+      
+      if (!response.ok) {
+        // Parse error response for specific AI-related errors
+        let errorMessage = "Failed to start grouping";
+        let errorDetails = "";
+        
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.message || errorMessage;
+          errorDetails = errorData.details || "";
+          
+          // Check for specific AI service errors
+          if (errorMessage.includes("dependencies") || errorMessage.includes("TensorFlow") || errorMessage.includes("Canvas")) {
+            console.error("❌ AI service unavailable", { errorMessage, errorDetails });
+            throw new Error("AI_SERVICE_UNAVAILABLE: " + errorMessage);
+          } else if (errorMessage.includes("insufficient photos")) {
+            throw new Error("INSUFFICIENT_PHOTOS: " + errorMessage);
+          } else {
+            throw new Error("GROUPING_ERROR: " + errorMessage);
+          }
+        } catch (parseError) {
+          // If JSON parsing fails, throw generic error
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+      }
+      
+      const result = await response.json();
+      console.log("✅ Grouping analysis started successfully", { result });
+      
+      toast({
+        title: "AI grouping started",
+        description: `Analyzing ${successCount} photos to find similar groups...`,
+      });
+      
+      // Navigate to results after a short delay
+      setTimeout(() => {
+        navigate(`/sessions/${sessionId}/groups`);
+      }, 2000);
+      
+    } catch (error) {
+      console.error("❌ Failed to start grouping", { error });
+      
+      // 3. GRACEFUL DEGRADATION - Provide fallback options when AI fails
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      
+      if (errorMessage.includes("AI_SERVICE_UNAVAILABLE")) {
+        toast({
+          title: "AI grouping unavailable",
+          description: "AI services are temporarily unavailable. Your photos are uploaded - you can view them individually.",
+          variant: "destructive",
+        });
+        
+        // Still navigate to session view where users can manually organize
+        setTimeout(() => {
+          navigate(`/sessions/${sessionId}`);
+        }, 2000);
+        
+      } else if (errorMessage.includes("INSUFFICIENT_PHOTOS")) {
+        toast({
+          title: "Not enough photos",
+          description: "You need at least 2 photos for AI grouping. Upload more photos to enable grouping.",
+          variant: "default",
+        });
+        
+      } else if (errorMessage.includes("GROUPING_ERROR")) {
+        toast({
+          title: "Grouping failed",
+          description: "AI grouping encountered an error. Your photos are safe - try refreshing and analyzing again.",
+          variant: "destructive",
+        });
+        
+        // Navigate to session view for manual options
+        setTimeout(() => {
+          navigate(`/sessions/${sessionId}`);
+        }, 2000);
+        
+      } else {
+        // Generic error fallback
+        toast({
+          title: "Failed to start grouping",
+          description: errorMessage.replace(/^[A-Z_]+:\s*/, '') || "Please try again or contact support",
+          variant: "destructive",
+        });
+      }
     }
   };
 
