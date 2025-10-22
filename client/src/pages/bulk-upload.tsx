@@ -38,37 +38,61 @@ export default function BulkUploadPage() {
   });
 
   const handleUploadComplete = async (results: any[]) => {
+    console.log("🚀 Bulk upload completed", { sessionId, resultCount: results.length });
+    
     if (sessionId) {
+      const successCount = results.filter(r => r.success).length;
       toast({
         title: "Upload complete",
-        description: `Successfully uploaded ${results.length} photos`,
+        description: `Successfully uploaded ${successCount} of ${results.length} photos`,
       });
       
-      // Start grouping analysis using existing endpoint
-      try {
-        const response = await apiRequest("POST", `/api/sessions/${sessionId}/group-analyze`, {
-          similarityThreshold: 0.7,
-          targetGroupSize: 5,
-          minGroupSize: 2,
-          maxGroupSize: 10,
-        });
-        await response.json();
+      // Only start grouping if we have successful uploads
+      if (successCount > 0) {
+        console.log("🔍 Starting grouping analysis", { sessionId, photoCount: successCount });
+        
+        // Start grouping analysis using existing endpoint
+        try {
+          const response = await apiRequest("POST", `/api/sessions/${sessionId}/group-analyze`, {
+            similarityThreshold: 0.7,
+            targetGroupSize: 5,
+            minGroupSize: 2,
+            maxGroupSize: 10,
+          });
+          
+          console.log("✅ Grouping analysis started", { response });
+          await response.json();
+          
+          toast({
+            title: "Grouping started",
+            description: `AI is analyzing ${successCount} photos into groups`,
+          });
+        } catch (error) {
+          console.error("❌ Failed to start grouping", { error });
+          toast({
+            title: "Failed to start grouping",
+            description: error instanceof Error ? error.message : "Please try again",
+            variant: "destructive",
+          });
+        }
+      } else {
         toast({
-          title: "Grouping started",
-          description: "AI is analyzing your photos",
-        });
-      } catch (error) {
-        toast({
-          title: "Failed to start grouping",
-          description: "Please try again",
+          title: "No successful uploads",
+          description: "Please check your files and try again",
           variant: "destructive",
         });
       }
+    } else {
+      toast({
+        title: "No session available",
+        description: "Please refresh and try again",
+        variant: "destructive",
+      });
     }
   };
 
   const handleUploadProgress = (progress: any) => {
-    console.log("Upload progress:", progress);
+    console.log("📊 Upload progress:", { progress, sessionId });
   };
 
   const handleError = (error: string) => {
