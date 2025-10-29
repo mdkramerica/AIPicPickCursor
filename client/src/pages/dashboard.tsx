@@ -730,22 +730,23 @@ export default function Dashboard() {
                 View Comparison
               </Button>
             ) : (
-            <Button 
-              onClick={() => analyzeSessionMutation.mutate(selectedSession)}
-              disabled={!canAnalyze || analyzeSessionMutation.isPending}
-              data-testid="button-analyze-session-mobile"
-              className="w-full min-h-[52px] text-base"
-            >
-              {analyzeSessionMutation.isPending ? (
-                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-              ) : (
-                <Sparkles className="mr-2 h-5 w-5" />
-              )}
-              {analyzeSessionMutation.isPending ? 'Analyzing...' : 'Analyze Photos'}
-            </Button>
-          )}
-        </div>
-      )}
+              <Button 
+                onClick={() => analyzeSessionMutation.mutate(selectedSession)}
+                disabled={!canAnalyze || analyzeSessionMutation.isPending}
+                data-testid="button-analyze-session-mobile"
+                className="w-full min-h-[52px] text-base"
+              >
+                {analyzeSessionMutation.isPending ? (
+                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                ) : (
+                  <Sparkles className="mr-2 h-5 w-5" />
+                )}
+                {analyzeSessionMutation.isPending ? 'Analyzing...' : 'Analyze Photos'}
+              </Button>
+            )}
+          </div>
+        );
+      })()}
     </div>
   );
 }
