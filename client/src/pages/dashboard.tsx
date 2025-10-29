@@ -39,6 +39,28 @@ export default function Dashboard() {
   const [analysisProgress, setAnalysisProgress] = useState<AnalysisProgress | null>(null);
   const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const [presignedUrls, setPresignedUrls] = useState<Record<string, string>>({});
+
+  // Pagination state for sessions
+  const [sessionsPage, setSessionsPage] = useState(1);
+  const sessionsLimit = 20;
+
+  // Fetch sessions (paginated)
+  const { data: sessionsResponse, isLoading: sessionsLoading } = useQuery<{
+    data: PhotoSession[];
+    pagination: {
+      page: number;
+      limit: number;
+      total: number;
+      totalPages: number;
+    };
+  }>({
+    queryKey: ["/api/sessions", sessionsPage, sessionsLimit],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/sessions?page=${sessionsPage}&limit=${sessionsLimit}`);
+      return await res.json();
+    },
+  });
+  const sessions = sessionsResponse?.data || [];
   
   // Auto-select session from URL parameter (e.g., from bulk upload redirect)
   useEffect(() => {
@@ -74,28 +96,6 @@ export default function Dashboard() {
       }
     }
   }, [sessions, selectedSession]);
-
-  // Pagination state for sessions
-  const [sessionsPage, setSessionsPage] = useState(1);
-  const sessionsLimit = 20;
-
-  // Fetch sessions (paginated)
-  const { data: sessionsResponse, isLoading: sessionsLoading } = useQuery<{
-    data: PhotoSession[];
-    pagination: {
-      page: number;
-      limit: number;
-      total: number;
-      totalPages: number;
-    };
-  }>({
-    queryKey: ["/api/sessions", sessionsPage, sessionsLimit],
-    queryFn: async () => {
-      const res = await apiRequest("GET", `/api/sessions?page=${sessionsPage}&limit=${sessionsLimit}`);
-      return await res.json();
-    },
-  });
-  const sessions = sessionsResponse?.data || [];
 
   // Pagination state for photos
   const [photosPage, setPhotosPage] = useState(1);
