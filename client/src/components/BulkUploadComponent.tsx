@@ -33,6 +33,7 @@ export interface BulkUploadProps {
   onError: (error: string) => void;
   onAnalyzeClick?: () => void; // Optional callback for analyze button
   showAnalyzeButton?: boolean; // Whether to show analyze button after upload
+  isAnalyzing?: boolean; // Whether analysis is currently running
 }
 
 interface QueuedFile {
@@ -54,7 +55,8 @@ export default function BulkUploadComponent({
   onUploadComplete,
   onError,
   onAnalyzeClick,
-  showAnalyzeButton = false
+  showAnalyzeButton = false,
+  isAnalyzing = false
 }: BulkUploadProps) {
   const { getToken } = useKindeAuth();
   const [files, setFiles] = useState<QueuedFile[]>([]);
@@ -475,9 +477,19 @@ export default function BulkUploadComponent({
                     <Button 
                       onClick={handleAnalyzeClick}
                       className="bg-primary"
+                      disabled={isAnalyzing}
                     >
-                      <Sparkles className="mr-2 h-4 w-4" />
-                      Analyze Photos
+                      {isAnalyzing ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Analyzing...
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="mr-2 h-4 w-4" />
+                          Analyze Photos
+                        </>
+                      )}
                     </Button>
                   </>
                 ) : (

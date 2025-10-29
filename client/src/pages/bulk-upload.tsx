@@ -1,13 +1,15 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
-import { ArrowLeft, Upload, Sparkles } from "lucide-react";
+import { ArrowLeft, Upload, Sparkles, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
 import BulkUploadComponent from "@/components/BulkUploadComponent";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { queryClient } from "@/lib/queryClient";
 // import { useBulkSession } from "@/hooks/useBulkSession"; // Not used in this component
 
 export default function BulkUploadPage() {
@@ -79,6 +81,8 @@ export default function BulkUploadPage() {
 
   const [uploadCompleted, setUploadCompleted] = useState(false);
   const [uploadedPhotoCount, setUploadedPhotoCount] = useState(0);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analysisStarted, setAnalysisStarted] = useState(false);
 
   const handleUploadComplete = async (results: any[]) => {
     console.log("🚀 Bulk upload completed", { sessionId, resultCount: results.length });
@@ -234,8 +238,12 @@ export default function BulkUploadPage() {
       console.log("✅ AI dependencies validated successfully");
     }
 
-    // 2. ENHANCED ERROR HANDLING - Start grouping with detailed error tracking
+    // 2. START ANALYSIS - Begin analysis/grouping process
+    setIsAnalyzing(true);
+    setAnalysisStarted(true);
+    
     try {
+      // Start analysis/grouping in background (this is a long-running operation)
       const response = await apiRequest("POST", `/api/sessions/${sessionId}/group-analyze`, {
         similarityThreshold: 0.7,
         targetGroupSize: 5,
@@ -244,6 +252,9 @@ export default function BulkUploadPage() {
       });
       
       if (!response.ok) {
+        setIsAnalyzing(false);
+        setAnalysisStarted(false);
+        
         // Parse error response for specific AI-related errors
         let errorMessage = "Failed to start grouping";
         let errorDetails = "";
@@ -268,21 +279,20 @@ export default function BulkUploadPage() {
         }
       }
       
-      const result = await response.json();
-      console.log("✅ Grouping analysis started successfully", { result });
+      // If we get here, the endpoint accepted the request
+      // Progress will be tracked via polling
+      console.log("✅ Analysis/grouping started successfully");
       
       toast({
-        title: "AI grouping started",
-        description: `Analyzing ${uploadedPhotoCount} photos to find similar groups...`,
+        title: "Analysis Started",
+        description: `Analyzing ${actualPhotoCount} photos... This may take a few minutes.`,
       });
       
-      // Navigate to dashboard to view results
-      // Note: The grouping happens on the server - check the session in the dashboard to see groups
-      setTimeout(() => {
-        navigate(`/`);
-      }, 2000);
+      // Progress polling will handle completion via useEffect above
       
     } catch (error) {
+      setIsAnalyzing(false);
+      setAnalysisStarted(false);
       console.error("❌ Failed to start grouping", { error });
       
       // 3. GRACEFUL DEGRADATION - Provide fallback options when AI fails
@@ -329,6 +339,58 @@ export default function BulkUploadPage() {
       }
     }
   };
+
+  // Poll analysis progress when analyzing
+  const { data: progressData } = useQuery<{
+    progress: {
+      sessionId: string;
+      currentPhoto: number;
+      totalPhotos: number;
+      percentage: number;
+      status: 'loading_models' | 'analyzing' | 'selecting_best' | 'complete' | 'error';
+      message: string;
+      currentPhotoId?: string;
+    } | null;
+  }>({
+    queryKey: ["/api/sessions", sessionId, "progress"],
+    enabled: !!sessionId && isAnalyzing,
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      // Stop polling if complete or error
+      if (data?.progress?.status === 'complete' || data?.progress?.status === 'error') {
+        return false;
+      }
+      // Poll every 1 second while analyzing
+      return 1000;
+    },
+    refetchIntervalInBackground: false,
+  });
+
+  // Check if analysis is complete and navigate
+  useEffect(() => {
+    if (progressData?.progress?.status === 'complete' && isAnalyzing) {
+      setIsAnalyzing(false);
+      setAnalysisStarted(false);
+      toast({
+        title: "Analysis Complete",
+        description: "Your photos have been analyzed and grouped successfully!",
+      });
+      // Refresh session data
+      queryClient.invalidateQueries({ queryKey: ["/api/sessions"] });
+      // Navigate after a short delay
+      setTimeout(() => {
+        navigate(`/`);
+      }, 2000);
+    } else if (progressData?.progress?.status === 'error' && isAnalyzing) {
+      setIsAnalyzing(false);
+      setAnalysisStarted(false);
+      toast({
+        title: "Analysis Error",
+        description: progressData.progress.message || "Analysis encountered an error",
+        variant: "destructive",
+      });
+    }
+  }, [progressData, isAnalyzing, navigate, toast]);
 
   const handleUploadProgress = (progress: any) => {
     console.log("📊 Upload progress:", { progress, sessionId });
@@ -427,6 +489,72 @@ export default function BulkUploadPage() {
       ) : (
         /* Bulk upload interface */
         <div className="space-y-6">
+          {/* Analysis Progress Display */}
+          {isAnalyzing && progressData?.progress && (
+            <Card className="border-primary">
+              <CardHeader>
+                <div className="flex items-center gap-3">
+                  <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                  <div>
+                    <h2 className="text-xl font-semibold">Analyzing Photos</h2>
+                    <p className="text-sm text-muted-foreground">
+                      {progressData.progress.message || "Processing your photos..."}
+                    </p>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium">Progress</span>
+                    <span className="text-sm font-mono">
+                      {progressData.progress.percentage}%
+                    </span>
+                  </div>
+                  <Progress value={progressData.progress.percentage} className="h-2" />
+                </div>
+                
+                {progressData.progress.totalPhotos > 0 && (
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm text-muted-foreground">
+                        {progressData.progress.status === 'loading_models' && 'Loading AI models...'}
+                        {progressData.progress.status === 'analyzing' && 'Analyzing photos...'}
+                        {progressData.progress.status === 'selecting_best' && 'Selecting best photos...'}
+                      </span>
+                      <span className="text-sm text-muted-foreground font-mono">
+                        {progressData.progress.currentPhoto} / {progressData.progress.totalPhotos}
+                      </span>
+                    </div>
+                    <Progress 
+                      value={(progressData.progress.currentPhoto / progressData.progress.totalPhotos) * 100} 
+                      className="h-1" 
+                    />
+                  </div>
+                )}
+                
+                {progressData.progress.currentPhotoId && (
+                  <p className="text-xs text-muted-foreground">
+                    Processing photo {progressData.progress.currentPhoto} of {progressData.progress.totalPhotos}...
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Show spinner while waiting for initial progress */}
+          {isAnalyzing && !progressData?.progress && (
+            <Card className="border-primary">
+              <CardContent className="p-6 text-center">
+                <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto mb-4" />
+                <h3 className="text-lg font-semibold mb-2">Starting Analysis...</h3>
+                <p className="text-sm text-muted-foreground">
+                  Initializing AI models and preparing photos for analysis
+                </p>
+              </CardContent>
+            </Card>
+          )}
+
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
@@ -452,7 +580,8 @@ export default function BulkUploadPage() {
                 onUploadComplete={handleUploadComplete}
                 onError={handleError}
                 onAnalyzeClick={handleAnalyzeClick}
-                showAnalyzeButton={uploadCompleted && uploadedPhotoCount >= 2}
+                showAnalyzeButton={uploadCompleted && uploadedPhotoCount >= 2 && !isAnalyzing}
+                isAnalyzing={isAnalyzing}
               />
             </CardContent>
           </Card>
