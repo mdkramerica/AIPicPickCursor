@@ -1,0 +1,10 @@
+node_modules
+dist
+.git
+.env.local
+*.log
+*.md
+attached_assets
+migrations
+.DS_Store
+

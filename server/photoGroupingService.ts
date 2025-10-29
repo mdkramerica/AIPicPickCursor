@@ -685,7 +685,11 @@ export class PhotoGroupingService {
           sessionId,
           missingDependencies: dependencyCheck.missingDependencies
         });
-        throw new Error(`Photo grouping service unavailable due to missing dependencies: ${dependencyCheck.missingDependencies.join(', ')}`);
+        // Throw a more specific error that will be caught by route handler
+        const error = new Error(`Photo grouping service unavailable due to missing dependencies: ${dependencyCheck.missingDependencies.join(', ')}`);
+        (error as any).isDependencyError = true;
+        (error as any).missingDependencies = dependencyCheck.missingDependencies;
+        throw error;
       }
       
       // Get all photos in the session

@@ -954,6 +954,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         logger.error(`photoGroupingService not available`, { sessionId, userId });
         throw new AppError(500, "Grouping service not initialized");
       }
+      
+      // Check dependencies before starting grouping
+      const dependencyCheck = photoGroupingService.checkDependencies();
+      if (!dependencyCheck.available) {
+        logger.error(`Grouping dependencies missing`, {
+          sessionId,
+          userId,
+          missingDependencies: dependencyCheck.missingDependencies
+        });
+        throw new AppError(500, `AI grouping service unavailable. Missing dependencies: ${dependencyCheck.missingDependencies.join(', ')}. Please ensure all required packages are installed.`);
+      }
     
       // Perform grouping analysis with error handling
       logger.info(`Starting photo grouping service`, { sessionId, userId, photoCount: photos.length });
@@ -1028,18 +1039,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
           sessionId,
           userId,
           error: groupingError instanceof Error ? groupingError.message : 'Unknown error',
-          stack: groupingError instanceof Error ? groupingError.stack : undefined
+          stack: groupingError instanceof Error ? groupingError.stack : undefined,
+          isDependencyError: (groupingError as any).isDependencyError,
+          missingDependencies: (groupingError as any).missingDependencies
         });
         
-        // Check if it's a TensorFlow.js or canvas dependency issue
+        // Check if it's a dependency error (either from string match or explicit flag)
         const errorMessage = groupingError instanceof Error ? groupingError.message.toLowerCase() : '';
-        const isDependencyError = errorMessage.includes('tensorflow') || 
+        const isDependencyError = (groupingError as any).isDependencyError || 
+                                errorMessage.includes('tensorflow') || 
                                 errorMessage.includes('canvas') || 
                                 errorMessage.includes('module') ||
-                                errorMessage.includes('import');
+                                errorMessage.includes('import') ||
+                                errorMessage.includes('missing dependencies');
         
         if (isDependencyError) {
-          throw new AppError(500, "AI grouping service unavailable due to missing dependencies. Please contact support.");
+          const missingDeps = (groupingError as any).missingDependencies || ['Unknown'];
+          throw new AppError(500, `AI grouping service unavailable. Missing dependencies: ${Array.isArray(missingDeps) ? missingDeps.join(', ') : missingDeps}. Please ensure all required packages are installed: @tensorflow/tfjs-node, @vladmandic/face-api, canvas`);
         } else {
           throw new AppError(500, `Grouping analysis failed: ${groupingError instanceof Error ? groupingError.message : 'Unknown error'}`);
         }
