@@ -263,61 +263,103 @@ export default function BulkUploadComponent({
 
     const results: UploadResult[] = [];
     let completedCount = 0;
+    const CONCURRENT_UPLOADS = 5; // Upload 5 files at a time
 
     // Update status to uploading for all files
     setFiles(prev => prev.map(f => ({ ...f, status: 'uploading' as const, progress: 0 })));
 
-    // Upload files sequentially to avoid overwhelming the server
-    for (const queuedFile of files) {
-      try {
-        // Update current file in progress
-        onUploadProgress({
-          totalFiles: files.length,
-          completedFiles: completedCount,
-          currentFile: queuedFile.file.name,
-          overallProgress: (completedCount / files.length) * 100
-        });
-
-        const result = await uploadFile(queuedFile);
-        results.push(result);
-
-        if (result.success) {
-          // Get presigned URL for display after upload succeeds
-          let displayUrl = result.url;
-          if (result.url && result.url.startsWith('/objects/')) {
-            try {
-              const token = await getToken();
-              const presignedResponse = await fetch(`/api/objects/presigned-url?path=${encodeURIComponent(result.url)}`, {
-                headers: {
-                  'Authorization': token ? `Bearer ${token}` : '',
+    // Upload files in parallel batches for better performance
+    // Process files in batches of CONCURRENT_UPLOADS to avoid overwhelming server/network
+    for (let i = 0; i < files.length; i += CONCURRENT_UPLOADS) {
+      const batch = files.slice(i, i + CONCURRENT_UPLOADS);
+      
+      // Upload batch in parallel
+      const batchPromises = batch.map(async (queuedFile) => {
+        try {
+          const result = await uploadFile(queuedFile);
+          
+          if (result.success) {
+            // Get presigned URL for display after upload succeeds
+            let displayUrl = result.url;
+            if (result.url && result.url.startsWith('/objects/')) {
+              try {
+                const token = await getToken();
+                const presignedResponse = await fetch(`/api/objects/presigned-url?path=${encodeURIComponent(result.url)}`, {
+                  headers: {
+                    'Authorization': token ? `Bearer ${token}` : '',
+                  }
+                });
+                if (presignedResponse.ok) {
+                  const presignedData = await presignedResponse.json();
+                  displayUrl = presignedData.presignedUrl;
+                  console.log('✅ Generated presigned URL for display:', queuedFile.file.name);
                 }
-              });
-              if (presignedResponse.ok) {
-                const presignedData = await presignedResponse.json();
-                displayUrl = presignedData.presignedUrl;
-                console.log('✅ Generated presigned URL for display:', queuedFile.file.name);
+              } catch (presignedError) {
+                console.warn('⚠️ Could not get presigned URL, using object path:', presignedError);
               }
-            } catch (presignedError) {
-              console.warn('⚠️ Could not get presigned URL, using object path:', presignedError);
             }
+            
+            setFiles(prev => prev.map(f => 
+              f.id === queuedFile.id 
+                ? { ...f, status: 'success' as const, progress: 100, url: result.url, displayUrl }
+                : f
+            ));
+          } else {
+            setFiles(prev => prev.map(f => 
+              f.id === queuedFile.id 
+                ? { ...f, status: 'error' as const, error: result.error }
+                : f
+            ));
           }
+          
+          return result;
+        } catch (error) {
+          const errorResult: UploadResult = {
+            file: queuedFile.file,
+            url: '',
+            filename: queuedFile.file.name,
+            success: false,
+            error: error instanceof Error ? error.message : 'Unknown error'
+          };
           
           setFiles(prev => prev.map(f => 
             f.id === queuedFile.id 
-              ? { ...f, status: 'success' as const, progress: 100, url: result.url, displayUrl }
+              ? { ...f, status: 'error' as const, error: errorResult.error }
               : f
           ));
+          
+          return errorResult;
+        }
+      });
+
+      // Wait for batch to complete (all uploads in parallel)
+      const batchResults = await Promise.allSettled(batchPromises);
+      
+      // Process batch results
+      batchResults.forEach((settledResult, index) => {
+        if (settledResult.status === 'fulfilled') {
+          results.push(settledResult.value);
         } else {
+          const queuedFile = batch[index];
+          const errorResult: UploadResult = {
+            file: queuedFile.file,
+            url: '',
+            filename: queuedFile.file.name,
+            success: false,
+            error: settledResult.reason instanceof Error ? settledResult.reason.message : 'Unknown error'
+          };
+          results.push(errorResult);
+          
           setFiles(prev => prev.map(f => 
             f.id === queuedFile.id 
-              ? { ...f, status: 'error' as const, error: result.error }
+              ? { ...f, status: 'error' as const, error: errorResult.error }
               : f
           ));
         }
-
+        
         completedCount++;
-
-        // Calculate estimated time remaining
+        
+        // Update progress after each file completes
         const elapsedTime = Date.now() - (uploadStartTime || Date.now());
         const avgTimePerFile = elapsedTime / completedCount;
         const remainingFiles = files.length - completedCount;
@@ -326,27 +368,11 @@ export default function BulkUploadComponent({
         onUploadProgress({
           totalFiles: files.length,
           completedFiles: completedCount,
-          currentFile: queuedFile.file.name,
+          currentFile: batch[index]?.file.name,
           overallProgress: (completedCount / files.length) * 100,
           estimatedTimeRemaining
         });
-
-      } catch (error) {
-        const errorResult: UploadResult = {
-          file: queuedFile.file,
-          url: '',
-          filename: queuedFile.file.name,
-          success: false,
-          error: error instanceof Error ? error.message : 'Unknown error'
-        };
-        results.push(errorResult);
-
-        setFiles(prev => prev.map(f => 
-          f.id === queuedFile.id 
-            ? { ...f, status: 'error' as const, error: errorResult.error }
-            : f
-        ));
-      }
+      });
     }
 
     setIsUploading(false);
