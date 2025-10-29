@@ -132,12 +132,12 @@ export interface GroupingOptions {
 export class PhotoGroupingService {
   private progressEmitter = new EventEmitter();
   private readonly DEFAULT_OPTIONS: Required<GroupingOptions> = {
-    similarityThreshold: 0.7,
-    maxGroupSize: 10,
+    similarityThreshold: 0.55,  // Lower from 0.7 to 0.55 (55%) for burst photos
+    maxGroupSize: 15,           // Increase from 10 to 15 for larger burst sequences
     minGroupSize: 2,
-    temporalWeight: 0.4,
-    visualWeight: 0.4,
-    metadataWeight: 0.2,
+    temporalWeight: 0.5,        // Increase from 0.4 to 0.5 (favor temporal clustering)
+    visualWeight: 0.35,         // Decrease from 0.4 to 0.35
+    metadataWeight: 0.15,       // Decrease from 0.2 to 0.15
     batchSize: 10,
   };
 
@@ -449,7 +449,13 @@ export class PhotoGroupingService {
   calculateSimilarity(features1: GroupingFeatures, features2: GroupingFeatures, options: Required<GroupingOptions>): number {
     // Temporal similarity (photos taken close together are more similar)
     const timeDiff = Math.abs(features1.timestamp.getTime() - features2.timestamp.getTime());
-    const temporalSimilarity = Math.exp(-timeDiff / (30 * 1000)); // 30 second decay
+    // Burst photo handling: photos within 60 seconds get high temporal similarity
+    // 60 second decay (increased from 30) to better support burst sequences
+    const temporalSimilarity = Math.exp(-timeDiff / (60 * 1000)); // 60 second decay
+    
+    // Burst photo boost: if photos taken within 10 seconds, boost similarity
+    const isBurst = timeDiff < 10000; // 10 seconds
+    const burstBoost = isBurst ? 0.15 : 0; // Add 15% similarity boost for burst photos
     
     // Visual similarity
     const colorSimilarity = this.calculateHistogramSimilarity(features1.colorHistogram, features2.colorHistogram);
@@ -477,11 +483,12 @@ export class PhotoGroupingService {
     
     const metadataSimilarity = (aspectRatioSimilarity + dimensionSimilarity) / 2;
     
-    // Weighted combination
+    // Weighted combination with burst boost
     const overallSimilarity = (
       temporalSimilarity * options.temporalWeight +
       visualSimilarity * options.visualWeight +
-      metadataSimilarity * options.metadataWeight
+      metadataSimilarity * options.metadataWeight +
+      burstBoost  // Add burst boost to final score
     );
     
     return Math.max(0, Math.min(1, overallSimilarity));
@@ -577,6 +584,17 @@ export class PhotoGroupingService {
         const similarity = this.calculateSimilarity(features[i], features[j], options);
         matrix[i][j] = similarity;
         matrix[j][i] = similarity; // Symmetric matrix
+        
+        // Log similarity scores for first few photo pairs to diagnose grouping
+        if (i < 5 && j < 5) {
+          logger.info(`Photo pair similarity`, {
+            photo1: features[i].photoId,
+            photo2: features[j].photoId,
+            similarity: similarity.toFixed(3),
+            timeDiff: Math.abs(features[i].timestamp.getTime() - features[j].timestamp.getTime()) / 1000,
+            threshold: options.similarityThreshold
+          });
+        }
       }
     }
     

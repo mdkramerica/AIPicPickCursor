@@ -1271,7 +1271,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           sessionId,
           userId,
           clustersFound: clusters.length,
-          photosProcessed: photos.length
+          photosProcessed: photos.length,
+          // Add detailed cluster info
+          clusterSizes: clusters.map(c => c.photoIds.length),
+          clusterConfidences: clusters.map(c => c.confidence.toFixed(3)),
+          options: groupingOptions
         });
         
         // Update session with grouping metadata
