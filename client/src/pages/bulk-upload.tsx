@@ -142,21 +142,7 @@ export default function BulkUploadPage() {
         statusText: verifyResponse.statusText 
       });
       
-      if (!verifyResponse.ok) {
-        const errorText = await verifyResponse.text();
-        console.error("❌ Photo verification failed", {
-          status: verifyResponse.status,
-          statusText: verifyResponse.statusText,
-          errorText
-        });
-        toast({
-          title: "Verification failed",
-          description: `Could not verify photos (${verifyResponse.status}). Please try again.`,
-          variant: "destructive",
-        });
-        return;
-      }
-      
+      // apiRequest throws if response is not ok, so if we get here, response is ok
       const responseData = await verifyResponse.json();
       console.log("📦 Response data received", { 
         hasData: !!responseData.data,
@@ -181,21 +167,15 @@ export default function BulkUploadPage() {
         // Verify again after waiting
         console.log("🔍 Retrying photo verification...");
         const retryResponse = await apiRequest("GET", `/api/sessions/${sessionId}/photos?limit=1000`);
-        if (retryResponse.ok) {
-          const retryData = await retryResponse.json();
-          const retryPhotos = retryData.data || (Array.isArray(retryData) ? retryData : []);
-          actualPhotoCount = Array.isArray(retryPhotos) ? retryPhotos.length : 0;
-          console.log("📊 Photo verification (retry)", {
-            sessionId,
-            actualPhotoCount,
-            expectedCount: uploadedPhotoCount
-          });
-        } else {
-          console.error("❌ Retry verification failed", {
-            status: retryResponse.status,
-            statusText: retryResponse.statusText
-          });
-        }
+        // apiRequest throws if response is not ok, so if we get here, response is ok
+        const retryData = await retryResponse.json();
+        const retryPhotos = retryData.data || (Array.isArray(retryData) ? retryData : []);
+        actualPhotoCount = Array.isArray(retryPhotos) ? retryPhotos.length : 0;
+        console.log("📊 Photo verification (retry)", {
+          sessionId,
+          actualPhotoCount,
+          expectedCount: uploadedPhotoCount
+        });
       }
 
       // If still not enough photos, show error and don't proceed
