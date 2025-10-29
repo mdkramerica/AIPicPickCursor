@@ -3,24 +3,36 @@ import type { Photo, PhotoAnalysisResult, FaceAnalysis } from "@shared/schema";
 import { logger } from './middleware/logger';
 import { EventEmitter } from 'events';
 
-// Try to import dependencies with error handling
+// Import dependencies using ES6 imports (matching photoAnalysis.ts pattern)
+// Use createRequire to bridge CommonJS require() in ES modules for graceful error handling
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+
 let tf: any = null;
 let faceapi: any = null;
 let createCanvas: any = null;
 let loadImageFromUrl: any = null;
+let storage: any = null;
 
+// Load dependencies with error handling (using createRequire for ES module compatibility)
 try {
   tf = require('@tensorflow/tfjs-node');
   logger.info('TensorFlow.js loaded successfully');
 } catch (error) {
-  logger.error('Failed to load TensorFlow.js', error as Error);
+  logger.error('Failed to load TensorFlow.js', { 
+    error: error instanceof Error ? error.message : String(error),
+    stack: error instanceof Error ? error.stack : undefined
+  });
 }
 
 try {
   faceapi = require('@vladmandic/face-api');
   logger.info('Face-api.js loaded successfully');
 } catch (error) {
-  logger.error('Failed to load Face-api.js', error as Error);
+  logger.error('Failed to load Face-api.js', { 
+    error: error instanceof Error ? error.message : String(error),
+    stack: error instanceof Error ? error.stack : undefined
+  });
 }
 
 try {
@@ -28,23 +40,30 @@ try {
   createCanvas = canvas.createCanvas;
   logger.info('Canvas loaded successfully');
 } catch (error) {
-  logger.error('Failed to load Canvas', error as Error);
+  logger.error('Failed to load Canvas', { 
+    error: error instanceof Error ? error.message : String(error),
+    stack: error instanceof Error ? error.stack : undefined
+  });
 }
 
 try {
   loadImageFromUrl = require('./imageLoader.js').loadImageFromUrl;
   logger.info('Image loader loaded successfully');
 } catch (error) {
-  logger.error('Failed to load image loader', error as Error);
+  logger.error('Failed to load image loader', { 
+    error: error instanceof Error ? error.message : String(error),
+    stack: error instanceof Error ? error.stack : undefined
+  });
 }
 
-// Import storage separately to avoid circular dependencies
-let storage: any = null;
 try {
-  storage = require('./storage').storage;
+  storage = require('./storage.js').storage;
   logger.info('Storage loaded successfully');
 } catch (error) {
-  logger.error('Failed to load storage', error as Error);
+  logger.error('Failed to load storage', { 
+    error: error instanceof Error ? error.message : String(error),
+    stack: error instanceof Error ? error.stack : undefined
+  });
 }
 
 export interface GroupingFeatures {
