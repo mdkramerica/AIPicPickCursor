@@ -115,14 +115,17 @@ export default function BulkUploadPage() {
     // Verify photos are in the database before starting grouping
     let actualPhotoCount = 0;
     try {
-      const verifyResponse = await apiRequest("GET", `/api/sessions/${sessionId}/photos`);
+      const verifyResponse = await apiRequest("GET", `/api/sessions/${sessionId}/photos?limit=1000`);
       if (verifyResponse.ok) {
-        const photos = await verifyResponse.json();
-        actualPhotoCount = photos.length;
+        const responseData = await verifyResponse.json();
+        // Handle paginated response format
+        const photos = responseData.data || responseData; // Support both paginated and non-paginated responses
+        actualPhotoCount = Array.isArray(photos) ? photos.length : 0;
         console.log("📊 Photo verification", {
           sessionId,
           actualPhotoCount,
-          expectedCount: successCount
+          expectedCount: successCount,
+          responseFormat: responseData.data ? 'paginated' : 'array'
         });
 
         if (actualPhotoCount < 2) {
@@ -130,10 +133,11 @@ export default function BulkUploadPage() {
           await new Promise(resolve => setTimeout(resolve, 2000)); // Wait another 2 seconds
 
           // Verify again after waiting
-          const retryResponse = await apiRequest("GET", `/api/sessions/${sessionId}/photos`);
+          const retryResponse = await apiRequest("GET", `/api/sessions/${sessionId}/photos?limit=1000`);
           if (retryResponse.ok) {
-            const retryPhotos = await retryResponse.json();
-            actualPhotoCount = retryPhotos.length;
+            const retryData = await retryResponse.json();
+            const retryPhotos = retryData.data || retryData;
+            actualPhotoCount = Array.isArray(retryPhotos) ? retryPhotos.length : 0;
             console.log("📊 Photo verification (retry)", {
               sessionId,
               actualPhotoCount,

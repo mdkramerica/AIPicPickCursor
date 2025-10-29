@@ -6,6 +6,7 @@ import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { useKindeAuth } from "@kinde-oss/kinde-auth-react";
+import { apiRequest } from "@/lib/queryClient";
 
 export interface UploadProgress {
   totalFiles: number;
@@ -39,7 +40,8 @@ interface QueuedFile {
   progress: number;
   status: 'pending' | 'uploading' | 'success' | 'error';
   error?: string;
-  url?: string;
+  url?: string; // Uploaded object path (e.g., /objects/uploads/...)
+  displayUrl?: string; // Presigned URL for display
 }
 
 export default function BulkUploadComponent({
@@ -74,8 +76,26 @@ export default function BulkUploadComponent({
 
   const createPreview = useCallback((file: File): Promise<string> => {
     return new Promise((resolve) => {
+      // Check if file is HEIC/HEIF - Chrome can't display these natively
+      const isHeic = file.name.toLowerCase().endsWith('.heic') || 
+                     file.name.toLowerCase().endsWith('.heif') ||
+                     file.type === 'image/heic' || 
+                     file.type === 'image/heif' ||
+                     file.type === 'image/heif-sequence';
+      
+      if (isHeic) {
+        // Return a placeholder transparent 1x1 PNG instead of broken HEIC data URL
+        // Chrome will display this, and we'll replace with uploaded JPEG after upload completes
+        resolve('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==');
+        return;
+      }
+      
       const reader = new FileReader();
       reader.onload = (e) => resolve(e.target?.result as string);
+      reader.onerror = () => {
+        // Fallback to placeholder on FileReader error
+        resolve('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==');
+      };
       reader.readAsDataURL(file);
     });
   }, []);
@@ -165,7 +185,8 @@ export default function BulkUploadComponent({
       const token = await getToken();
       console.log('🔑 Bulk upload token:', token ? `${token.substring(0, 20)}...` : 'NO TOKEN');
 
-      const response = await fetch('/api/objects/upload', {
+      // Step 1: Upload file to R2 storage
+      const uploadResponse = await fetch('/api/objects/upload', {
         method: 'POST',
         body: formData,
         headers: {
@@ -175,17 +196,50 @@ export default function BulkUploadComponent({
         }
       });
 
-      if (!response.ok) {
-        const errorText = await response.text();
+      if (!uploadResponse.ok) {
+        const errorText = await uploadResponse.text();
         console.error('❌ Upload failed response:', errorText);
-        throw new Error(`Upload failed (${response.status}): ${errorText}`);
+        throw new Error(`Upload failed (${uploadResponse.status}): ${errorText}`);
       }
 
-      const result = await response.json();
-      console.log('✅ Upload successful for:', queuedFile.file.name, result);
+      const uploadResult = await uploadResponse.json();
+      console.log('✅ File uploaded to R2:', queuedFile.file.name, uploadResult);
+      
+      // Step 2: Create Photo record in database
+      console.log('📝 Creating Photo record in database...');
+      const photoResponse = await apiRequest('POST', `/api/sessions/${sessionId}/photos`, {
+        fileUrl: uploadResult.fileUrl,
+        originalFilename: queuedFile.file.name,
+      });
+
+      if (!photoResponse.ok) {
+        const errorText = await photoResponse.text();
+        console.error('❌ Failed to create Photo record:', errorText);
+        throw new Error(`Failed to create photo record (${photoResponse.status}): ${errorText}`);
+      }
+
+      const photo = await photoResponse.json();
+      console.log('✅ Photo record created:', photo.id, queuedFile.file.name);
+      
+      // Step 3: Get presigned URL for immediate display
+      let displayUrl = uploadResult.fileUrl;
+      if (uploadResult.fileUrl && uploadResult.fileUrl.startsWith('/objects/')) {
+        try {
+          const presignedResponse = await apiRequest('GET', `/api/objects/presigned-url?path=${encodeURIComponent(uploadResult.fileUrl)}`);
+          if (presignedResponse.ok) {
+            const presignedData = await presignedResponse.json();
+            displayUrl = presignedData.presignedUrl;
+            console.log('✅ Got presigned URL for:', queuedFile.file.name);
+          }
+        } catch (presignedError) {
+          console.warn('⚠️ Failed to get presigned URL, will use object path:', presignedError);
+          // Continue with object path - might work if browser can handle auth
+        }
+      }
+      
       return {
         file: queuedFile.file,
-        url: result.fileUrl,
+        url: uploadResult.fileUrl,
         filename: queuedFile.file.name,
         success: true
       };
@@ -228,9 +282,29 @@ export default function BulkUploadComponent({
         results.push(result);
 
         if (result.success) {
+          // Get presigned URL for display after upload succeeds
+          let displayUrl = result.url;
+          if (result.url && result.url.startsWith('/objects/')) {
+            try {
+              const token = await getToken();
+              const presignedResponse = await fetch(`/api/objects/presigned-url?path=${encodeURIComponent(result.url)}`, {
+                headers: {
+                  'Authorization': token ? `Bearer ${token}` : '',
+                }
+              });
+              if (presignedResponse.ok) {
+                const presignedData = await presignedResponse.json();
+                displayUrl = presignedData.presignedUrl;
+                console.log('✅ Generated presigned URL for display:', queuedFile.file.name);
+              }
+            } catch (presignedError) {
+              console.warn('⚠️ Could not get presigned URL, using object path:', presignedError);
+            }
+          }
+          
           setFiles(prev => prev.map(f => 
             f.id === queuedFile.id 
-              ? { ...f, status: 'success' as const, progress: 100, url: result.url }
+              ? { ...f, status: 'success' as const, progress: 100, url: result.url, displayUrl }
               : f
           ));
         } else {
@@ -381,9 +455,23 @@ export default function BulkUploadComponent({
                   )}>
                     <div className="aspect-square relative bg-muted">
                       <img 
-                        src={file.preview} 
+                        src={file.displayUrl || file.url || file.preview} 
                         alt={file.file.name}
                         className="w-full h-full object-cover"
+                        onError={(e) => {
+                          // Fallback chain: displayUrl -> url -> preview -> placeholder
+                          const target = e.currentTarget;
+                          if (file.url && target.src !== file.url) {
+                            // Try object path if presigned URL failed
+                            target.src = file.url;
+                          } else if (file.preview && target.src !== file.preview) {
+                            // Try preview if both URLs failed
+                            target.src = file.preview;
+                          } else {
+                            // Last resort: placeholder
+                            target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iI2U1ZTdlYiIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTQiIGZpbGw9IiM5Y2EzYWYiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj5JbWFnZSBub3QgYXZhaWxhYmxlPC90ZXh0Pjwvc3ZnPg==';
+                          }
+                        }}
                       />
                       
                       {/* Status Overlay */}
