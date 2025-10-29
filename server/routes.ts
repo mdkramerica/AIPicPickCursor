@@ -606,22 +606,60 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const userId = req.userId;
     const sessionId = req.params.sessionId;
 
-    // Verify user owns this session
-    const session = await storage.getSession(sessionId);
-    if (!session || session.userId !== userId) {
-      throw new AppError(403, "Forbidden");
+    try {
+      // Verify user owns this session
+      const session = await storage.getSession(sessionId);
+      if (!session || session.userId !== userId) {
+        throw new AppError(403, "Forbidden");
+      }
+
+      // Get current progress from in-memory store
+      const progress = photoAnalysisService.getProgress(sessionId);
+
+      if (!progress) {
+        // No progress yet - check session status as fallback
+        // If session is analyzing but no progress, analysis might have failed
+        if (session.status === "analyzing") {
+          // Return minimal progress indicating analysis is running but no detailed progress yet
+          res.json({ 
+            progress: {
+              sessionId,
+              currentPhoto: 0,
+              totalPhotos: 0,
+              percentage: 0,
+              status: 'analyzing' as const,
+              message: 'Analysis starting...',
+            }
+          });
+          return;
+        }
+        
+        // No progress and not analyzing - return null
+        res.json({ progress: null });
+        return;
+      }
+
+      res.json({ progress });
+    } catch (error) {
+      // Don't let progress endpoint errors crash the app or return 502
+      logger.error('Progress endpoint error', {
+        sessionId,
+        userId,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+      
+      // Return error progress state instead of throwing (prevents 502)
+      res.json({ 
+        progress: {
+          sessionId,
+          currentPhoto: 0,
+          totalPhotos: 0,
+          percentage: 0,
+          status: 'error' as const,
+          message: 'Failed to get progress',
+        }
+      });
     }
-
-    // Get current progress from in-memory store
-    const progress = photoAnalysisService.getProgress(sessionId);
-
-    if (!progress) {
-      // No progress yet - return null
-      res.json({ progress: null });
-      return;
-    }
-
-    res.json({ progress });
   }));
 
   // SSE endpoint for grouping progress updates
@@ -715,11 +753,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       // Analyze all photos with face selections (pass sessionId for progress tracking)
-      const { analyses, bestPhotoId } = await photoAnalysisService.analyzeSession(
-        req.params.sessionId,
-        photos.map(p => ({ id: p.id, fileUrl: p.fileUrl })),
-        faceSelections
-      );
+      // Wrap in try-catch to ensure progress is updated on error
+      let analyses: any[] = [];
+      let bestPhotoId: string | null = null;
+      
+      try {
+        const result = await photoAnalysisService.analyzeSession(
+          req.params.sessionId,
+          photos.map(p => ({ id: p.id, fileUrl: p.fileUrl })),
+          faceSelections
+        );
+        analyses = result.analyses;
+        bestPhotoId = result.bestPhotoId;
+      } catch (analysisError) {
+        // Analysis failed - progress should already be updated by analyzeSession
+        logger.error('Analysis failed', {
+          sessionId: req.params.sessionId,
+          userId,
+          error: analysisError instanceof Error ? analysisError.message : 'Unknown error',
+          stack: analysisError instanceof Error ? analysisError.stack : undefined,
+        });
+        
+        // Update session status to failed
+        await storage.updateSession(req.params.sessionId, {
+          status: "failed",
+        }).catch(() => {
+          // Ignore errors updating status
+        });
+        
+        // Re-throw to be handled by outer catch
+        throw analysisError;
+      }
 
       // Update photos with analysis results
       for (const analysis of analyses) {
@@ -771,6 +835,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
         analyses,
       });
     } catch (error) {
+      logger.error('Analysis endpoint error', {
+        sessionId: req.params.sessionId,
+        userId,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined,
+      });
+      
+      // Ensure progress is updated to error state if not already done
+      try {
+        const progress = photoAnalysisService.getProgress(req.params.sessionId);
+        if (!progress || progress.status !== 'error') {
+          // Set error progress if not already set
+          photoAnalysisService.clearProgress(req.params.sessionId);
+          // Also try to emit error progress directly
+          try {
+            photoAnalysisService.onProgress(req.params.sessionId, () => {})(); // Subscribe and immediately unsubscribe to trigger error state
+          } catch {
+            // Ignore
+          }
+        }
+      } catch (progressError) {
+        // Ignore errors checking/clearing progress
+        logger.warn('Failed to update progress on error', { progressError });
+      }
+      
       // Update session status to failed on error
       await storage.updateSession(req.params.sessionId, {
         status: "failed",

@@ -510,152 +510,73 @@ export class PhotoAnalysisService {
   }> {
     const totalPhotos = photos.length;
 
-    // Emit initial progress - loading models
-    this.emitProgress({
-      sessionId,
-      currentPhoto: 0,
-      totalPhotos,
-      percentage: 0,
-      status: 'loading_models',
-      message: 'Loading AI models...',
-    });
-
-    // Ensure models are loaded
-    await this.loadModels();
-
-    // Analyze all photos with error handling - process in parallel batches
-    const analyses: PhotoAnalysisResult[] = [];
-    const CONCURRENT_ANALYSES = 3; // Analyze 3 photos at a time (lower than uploads due to CPU/GPU intensity)
-    let completedCount = 0;
-
-    // Helper function to apply face exclusions and recalculate quality
-    const applyFaceSelections = (analysis: PhotoAnalysisResult, photoId: string): PhotoAnalysisResult => {
-      if (!faceSelections || !faceSelections[photoId]) {
-        return analysis;
-      }
-
-      const photoSelections = faceSelections[photoId];
-      const includedFaces = analysis.faces.filter((_, idx) => photoSelections[idx] !== false);
-      
-      if (includedFaces.length > 0) {
-        // Recalculate overall quality based on included faces only
-        const eyesOpenCount = includedFaces.filter(f => f.attributes.eyesOpen.detected).length;
-        const smilingCount = includedFaces.filter(f => f.attributes.smile.detected).length;
-        const avgFaceQuality = includedFaces.reduce((sum, f) => sum + f.qualityScore, 0) / includedFaces.length;
-        
-        const eyesOpenScore = (eyesOpenCount / includedFaces.length) * 40;
-        const smilingScore = (smilingCount / includedFaces.length) * 40;
-        const faceQualityScore = (avgFaceQuality / 100) * 20;
-        
-        const overallQualityScore = eyesOpenScore + smilingScore + faceQualityScore;
-        
-        const closedEyes = includedFaces.length - eyesOpenCount;
-        const poorExpressions = includedFaces.filter(f => 
-          f.attributes.expression === 'sad' || f.attributes.expression === 'angry'
-        ).length;
-
-        let recommendation: 'best' | 'good' | 'acceptable' | 'poor';
-        if (overallQualityScore >= 85) recommendation = 'best';
-        else if (overallQualityScore >= 70) recommendation = 'good';
-        else if (overallQualityScore >= 50) recommendation = 'acceptable';
-        else recommendation = 'poor';
-
-        // Update analysis with filtered results
-        return {
-          ...analysis,
-          faces: includedFaces,
-          overallQualityScore,
-          issues: {
-            closedEyes,
-            poorExpressions,
-            blurryFaces: 0,
-          },
-          recommendation,
-        };
-      } else {
-        // All faces excluded - mark as poor quality
-        return {
-          ...analysis,
-          faces: [],
-          overallQualityScore: 0,
-          issues: {
-            closedEyes: 0,
-            poorExpressions: 0,
-            blurryFaces: 0,
-          },
-          recommendation: 'poor',
-        };
-      }
-    };
-
-    // Process photos in parallel batches
-    for (let i = 0; i < photos.length; i += CONCURRENT_ANALYSES) {
-      const batch = photos.slice(i, i + CONCURRENT_ANALYSES);
-      
-      // Analyze batch in parallel
-      const batchPromises = batch.map(async (photo, batchIndex) => {
-        try {
-          const analysis = await this.analyzePhoto(photo.fileUrl, photo.id);
-          const finalAnalysis = applyFaceSelections(analysis, photo.id);
-          
-          // Update progress as each photo completes (not sequentially)
-          completedCount++;
-          const progressPercentage = Math.round((completedCount / totalPhotos) * 100);
-          this.emitProgress({
-            sessionId,
-            currentPhoto: completedCount,
-            totalPhotos,
-            percentage: progressPercentage,
-            status: 'analyzing',
-            message: `Analyzing photo ${completedCount} of ${totalPhotos}...`,
-            currentPhotoId: photo.id,
-          });
-          
-          return { photo, analysis: finalAnalysis, success: true };
-        } catch (error) {
-          console.error(`Failed to analyze photo ${photo.id}:`, error);
-          completedCount++;
-          const progressPercentage = Math.round((completedCount / totalPhotos) * 100);
-          this.emitProgress({
-            sessionId,
-            currentPhoto: completedCount,
-            totalPhotos,
-            percentage: progressPercentage,
-            status: 'analyzing',
-            message: `Analyzing photo ${completedCount} of ${totalPhotos}...`,
-            currentPhotoId: photo.id,
-          });
-          
-          return {
-            photo,
-            analysis: {
-              photoId: photo.id,
-              faces: [],
-              overallQualityScore: 0,
-              issues: {
-                closedEyes: 0,
-                poorExpressions: 0,
-                blurryFaces: 0,
-              },
-              recommendation: 'poor' as const,
-            },
-            success: false,
-          };
-        }
+    try {
+      // Emit initial progress - loading models
+      this.emitProgress({
+        sessionId,
+        currentPhoto: 0,
+        totalPhotos,
+        percentage: 0,
+        status: 'loading_models',
+        message: 'Loading AI models...',
       });
 
-      // Wait for batch to complete (all analyses in parallel)
-      const batchResults = await Promise.allSettled(batchPromises);
-      
-      // Process batch results and add to analyses array
-      for (const settledResult of batchResults) {
-        if (settledResult.status === 'fulfilled') {
-          analyses.push(settledResult.value.analysis);
+      // Ensure models are loaded
+      await this.loadModels();
+
+      // Analyze all photos with error handling - process in parallel batches
+      const analyses: PhotoAnalysisResult[] = [];
+      const CONCURRENT_ANALYSES = 3; // Analyze 3 photos at a time (lower than uploads due to CPU/GPU intensity)
+      let completedCount = 0;
+
+      // Helper function to apply face exclusions and recalculate quality
+      const applyFaceSelections = (analysis: PhotoAnalysisResult, photoId: string): PhotoAnalysisResult => {
+        if (!faceSelections || !faceSelections[photoId]) {
+          return analysis;
+        }
+
+        const photoSelections = faceSelections[photoId];
+        const includedFaces = analysis.faces.filter((_, idx) => photoSelections[idx] !== false);
+        
+        if (includedFaces.length > 0) {
+          // Recalculate overall quality based on included faces only
+          const eyesOpenCount = includedFaces.filter(f => f.attributes.eyesOpen.detected).length;
+          const smilingCount = includedFaces.filter(f => f.attributes.smile.detected).length;
+          const avgFaceQuality = includedFaces.reduce((sum, f) => sum + f.qualityScore, 0) / includedFaces.length;
+          
+          const eyesOpenScore = (eyesOpenCount / includedFaces.length) * 40;
+          const smilingScore = (smilingCount / includedFaces.length) * 40;
+          const faceQualityScore = (avgFaceQuality / 100) * 20;
+          
+          const overallQualityScore = eyesOpenScore + smilingScore + faceQualityScore;
+          
+          const closedEyes = includedFaces.length - eyesOpenCount;
+          const poorExpressions = includedFaces.filter(f => 
+            f.attributes.expression === 'sad' || f.attributes.expression === 'angry'
+          ).length;
+
+          let recommendation: 'best' | 'good' | 'acceptable' | 'poor';
+          if (overallQualityScore >= 85) recommendation = 'best';
+          else if (overallQualityScore >= 70) recommendation = 'good';
+          else if (overallQualityScore >= 50) recommendation = 'acceptable';
+          else recommendation = 'poor';
+
+          // Update analysis with filtered results
+          return {
+            ...analysis,
+            faces: includedFaces,
+            overallQualityScore,
+            issues: {
+              closedEyes,
+              poorExpressions,
+              blurryFaces: 0,
+            },
+            recommendation,
+          };
         } else {
-          // If the promise itself failed (shouldn't happen with allSettled, but handle it)
-          const photo = batch[batchResults.indexOf(settledResult)];
-          analyses.push({
-            photoId: photo.id,
+          // All faces excluded - mark as poor quality
+          return {
+            ...analysis,
             faces: [],
             overallQualityScore: 0,
             issues: {
@@ -664,85 +585,182 @@ export class PhotoAnalysisService {
               blurryFaces: 0,
             },
             recommendation: 'poor',
-          });
+          };
+        }
+      };
+
+      // Process photos in parallel batches
+      for (let i = 0; i < photos.length; i += CONCURRENT_ANALYSES) {
+        const batch = photos.slice(i, i + CONCURRENT_ANALYSES);
+        
+        // Analyze batch in parallel
+        const batchPromises = batch.map(async (photo, batchIndex) => {
+          try {
+            const analysis = await this.analyzePhoto(photo.fileUrl, photo.id);
+            const finalAnalysis = applyFaceSelections(analysis, photo.id);
+            
+            // Update progress as each photo completes (not sequentially)
+            completedCount++;
+            const progressPercentage = Math.round((completedCount / totalPhotos) * 100);
+            this.emitProgress({
+              sessionId,
+              currentPhoto: completedCount,
+              totalPhotos,
+              percentage: progressPercentage,
+              status: 'analyzing',
+              message: `Analyzing photo ${completedCount} of ${totalPhotos}...`,
+              currentPhotoId: photo.id,
+            });
+            
+            return { photo, analysis: finalAnalysis, success: true };
+          } catch (error) {
+            console.error(`Failed to analyze photo ${photo.id}:`, error);
+            completedCount++;
+            const progressPercentage = Math.round((completedCount / totalPhotos) * 100);
+            this.emitProgress({
+              sessionId,
+              currentPhoto: completedCount,
+              totalPhotos,
+              percentage: progressPercentage,
+              status: 'analyzing',
+              message: `Analyzing photo ${completedCount} of ${totalPhotos}...`,
+              currentPhotoId: photo.id,
+            });
+            
+            return {
+              photo,
+              analysis: {
+                photoId: photo.id,
+                faces: [],
+                overallQualityScore: 0,
+                issues: {
+                  closedEyes: 0,
+                  poorExpressions: 0,
+                  blurryFaces: 0,
+                },
+                recommendation: 'poor' as const,
+              },
+              success: false,
+            };
+          }
+        });
+
+        // Wait for batch to complete (all analyses in parallel)
+        const batchResults = await Promise.allSettled(batchPromises);
+        
+        // Process batch results and add to analyses array
+        for (const settledResult of batchResults) {
+          if (settledResult.status === 'fulfilled') {
+            analyses.push(settledResult.value.analysis);
+          } else {
+            // If the promise itself failed (shouldn't happen with allSettled, but handle it)
+            const photo = batch[batchResults.indexOf(settledResult)];
+            analyses.push({
+              photoId: photo.id,
+              faces: [],
+              overallQualityScore: 0,
+              issues: {
+                closedEyes: 0,
+                poorExpressions: 0,
+                blurryFaces: 0,
+              },
+              recommendation: 'poor',
+            });
+          }
         }
       }
-    }
 
-    // Emit progress - selecting best photo
-    this.emitProgress({
-      sessionId,
-      currentPhoto: totalPhotos,
-      totalPhotos,
-      percentage: 100,
-      status: 'selecting_best',
-      message: 'Selecting best photo...',
-    });
+      // Emit progress - selecting best photo
+      this.emitProgress({
+        sessionId,
+        currentPhoto: totalPhotos,
+        totalPhotos,
+        percentage: 100,
+        status: 'selecting_best',
+        message: 'Selecting best photo...',
+      });
 
-    // Three-tier priority system for selecting best photo:
-    // Priority 0: Face count consensus (only consider photos within 1 face of max detected)
-    // Priority 1: Maximum eyes open count
-    // Priority 2: Quality score tiebreaker (smiles + face quality)
+      // Three-tier priority system for selecting best photo:
+      // Priority 0: Face count consensus (only consider photos within 1 face of max detected)
+      // Priority 1: Maximum eyes open count
+      // Priority 2: Quality score tiebreaker (smiles + face quality)
 
-    // First, find the maximum number of faces detected across all photos
-    const maxFaceCount = Math.max(...analyses.map(a => a.faces.length), 0);
-    
-    // Filter to only photos within 1 face of the maximum (consensus group)
-    // This ensures we're selecting from photos that captured most/all people
-    const consensusPhotos = analyses.filter(a => a.faces.length >= maxFaceCount - 1);
-    
-    console.log(`📊 Face count consensus: max=${maxFaceCount}, considering ${consensusPhotos.length}/${analyses.length} photos`);
-    consensusPhotos.forEach(p => {
-      console.log(`  - Photo ${p.photoId}: ${p.faces.length} faces detected`);
-    });
-    
-    let bestPhotoId: string | null = null;
-    let bestEyesOpenCount = -1;
-    let bestTiebreakerScore = 0;
-
-    // Now apply eyes open and quality score priorities within consensus group
-    for (const analysis of consensusPhotos) {
-      const eyesOpenCount = analysis.faces.filter(f => f.attributes.eyesOpen.detected).length;
+      // First, find the maximum number of faces detected across all photos
+      const maxFaceCount = Math.max(...analyses.map(a => a.faces.length), 0);
       
-      // Calculate tiebreaker score (smiles + face quality only, excludes eyes open)
-      const smilingCount = analysis.faces.filter(f => f.attributes.smile.detected).length;
-      const avgFaceQuality = analysis.faces.length > 0
-        ? analysis.faces.reduce((sum, f) => sum + f.qualityScore, 0) / analysis.faces.length
-        : 0;
+      // Filter to only photos within 1 face of the maximum (consensus group)
+      // This ensures we're selecting from photos that captured most/all people
+      const consensusPhotos = analyses.filter(a => a.faces.length >= maxFaceCount - 1);
       
-      const smilingScore = analysis.faces.length > 0 
-        ? (smilingCount / analysis.faces.length) * 40 
-        : 0;
-      const faceQualityScore = (avgFaceQuality / 100) * 20;
-      const tiebreakerScore = smilingScore + faceQualityScore;
+      console.log(`📊 Face count consensus: max=${maxFaceCount}, considering ${consensusPhotos.length}/${analyses.length} photos`);
+      consensusPhotos.forEach(p => {
+        console.log(`  - Photo ${p.photoId}: ${p.faces.length} faces detected`);
+      });
       
-      // Priority 1: Maximum eyes open count (within consensus group)
-      if (eyesOpenCount > bestEyesOpenCount) {
-        bestEyesOpenCount = eyesOpenCount;
-        bestTiebreakerScore = tiebreakerScore;
-        bestPhotoId = analysis.photoId;
-      } 
-      // Priority 2: If same eyes open count, use smiles + face quality as tiebreaker
-      else if (eyesOpenCount === bestEyesOpenCount && tiebreakerScore > bestTiebreakerScore) {
-        bestTiebreakerScore = tiebreakerScore;
-        bestPhotoId = analysis.photoId;
+      let bestPhotoId: string | null = null;
+      let bestEyesOpenCount = -1;
+      let bestTiebreakerScore = 0;
+
+      // Now apply eyes open and quality score priorities within consensus group
+      for (const analysis of consensusPhotos) {
+        const eyesOpenCount = analysis.faces.filter(f => f.attributes.eyesOpen.detected).length;
+        
+        // Calculate tiebreaker score (smiles + face quality only, excludes eyes open)
+        const smilingCount = analysis.faces.filter(f => f.attributes.smile.detected).length;
+        const avgFaceQuality = analysis.faces.length > 0
+          ? analysis.faces.reduce((sum, f) => sum + f.qualityScore, 0) / analysis.faces.length
+          : 0;
+        
+        const smilingScore = analysis.faces.length > 0 
+          ? (smilingCount / analysis.faces.length) * 40 
+          : 0;
+        const faceQualityScore = (avgFaceQuality / 100) * 20;
+        const tiebreakerScore = smilingScore + faceQualityScore;
+        
+        // Priority 1: Maximum eyes open count (within consensus group)
+        if (eyesOpenCount > bestEyesOpenCount) {
+          bestEyesOpenCount = eyesOpenCount;
+          bestTiebreakerScore = tiebreakerScore;
+          bestPhotoId = analysis.photoId;
+        } 
+        // Priority 2: If same eyes open count, use smiles + face quality as tiebreaker
+        else if (eyesOpenCount === bestEyesOpenCount && tiebreakerScore > bestTiebreakerScore) {
+          bestTiebreakerScore = tiebreakerScore;
+          bestPhotoId = analysis.photoId;
+        }
       }
+
+      // Emit completion
+      this.emitProgress({
+        sessionId,
+        currentPhoto: totalPhotos,
+        totalPhotos,
+        percentage: 100,
+        status: 'complete',
+        message: 'Analysis complete!',
+      });
+
+      return {
+        analyses,
+        bestPhotoId,
+      };
+    } catch (error) {
+      // Ensure error progress is always emitted if analysis fails
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred during analysis';
+      console.error(`❌ Analysis failed for session ${sessionId}:`, error);
+      
+      this.emitProgress({
+        sessionId,
+        currentPhoto: 0,
+        totalPhotos,
+        percentage: 0,
+        status: 'error',
+        message: `Analysis failed: ${errorMessage}`,
+      });
+      
+      // Re-throw so route handler can handle it
+      throw error;
     }
-
-    // Emit completion
-    this.emitProgress({
-      sessionId,
-      currentPhoto: totalPhotos,
-      totalPhotos,
-      percentage: 100,
-      status: 'complete',
-      message: 'Analysis complete!',
-    });
-
-    return {
-      analyses,
-      bestPhotoId,
-    };
   }
 
   /**
