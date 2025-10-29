@@ -34,10 +34,46 @@ export default function Dashboard() {
   const { logout } = useKindeAuth();
   const { toast } = useToast();
   const { isSubscribed } = useConvertKit();
+  const [location] = useLocation();
   const [selectedSession, setSelectedSession] = useState<string | null>(null);
   const [analysisProgress, setAnalysisProgress] = useState<AnalysisProgress | null>(null);
   const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const [presignedUrls, setPresignedUrls] = useState<Record<string, string>>({});
+  
+  // Auto-select session from URL parameter (e.g., from bulk upload redirect)
+  useEffect(() => {
+    const urlParts = location.split('?');
+    if (urlParts.length > 1) {
+      const params = new URLSearchParams(urlParts[1]);
+      const sessionIdFromUrl = params.get('sessionId');
+      if (sessionIdFromUrl && sessionIdFromUrl !== selectedSession) {
+        console.log('🔍 Auto-selecting session from URL:', sessionIdFromUrl);
+        setSelectedSession(sessionIdFromUrl);
+        // Invalidate queries to ensure fresh data
+        queryClient.invalidateQueries({ queryKey: ["/api/sessions"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/sessions", sessionIdFromUrl] });
+        queryClient.invalidateQueries({ queryKey: ["/api/sessions", sessionIdFromUrl, "photos"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/sessions", sessionIdFromUrl, "photos/presigned-urls"] });
+        // Clean up URL parameter
+        window.history.replaceState({}, '', '/');
+      }
+    }
+  }, [location, selectedSession]);
+  
+  // Auto-select most recent session if none selected and sessions are loaded
+  useEffect(() => {
+    if (!selectedSession && sessions.length > 0) {
+      // Sort by createdAt descending and select the most recent
+      const sortedSessions = [...sessions].sort((a, b) => 
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+      const mostRecentSession = sortedSessions[0];
+      if (mostRecentSession) {
+        console.log('🔍 Auto-selecting most recent session:', mostRecentSession.id);
+        setSelectedSession(mostRecentSession.id);
+      }
+    }
+  }, [sessions, selectedSession]);
 
   // Pagination state for sessions
   const [sessionsPage, setSessionsPage] = useState(1);

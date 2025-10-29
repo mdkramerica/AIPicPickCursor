@@ -390,16 +390,18 @@ export default function BulkUploadPage() {
       // Check if photos actually have analysis data (sometimes status can be misleading)
       // Refresh session data to get latest status
       queryClient.invalidateQueries({ queryKey: ["/api/sessions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sessions", sessionId] }); // This will invalidate all queries for this session
       queryClient.invalidateQueries({ queryKey: ["/api/sessions", sessionId, "photos"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sessions", sessionId, "photos/presigned-urls"] });
       
       toast({
         title: "Analysis Complete",
         description: "Your photos have been analyzed! You can now compare them.",
       });
       
-      // Navigate after a short delay
+      // Navigate after a short delay with session ID in URL to auto-select it
       setTimeout(() => {
-        navigate(`/`);
+        navigate(`/?sessionId=${sessionId}`);
       }, 2000);
     } else if (progressData?.progress?.status === 'error' && isAnalyzing) {
       // Don't immediately mark as failed - check if photos have analysis data
@@ -419,7 +421,7 @@ export default function BulkUploadPage() {
         });
         
         setTimeout(() => {
-          navigate(`/`);
+          navigate(`/?sessionId=${sessionId}`);
         }, 2000);
       }, 1000);
     }
