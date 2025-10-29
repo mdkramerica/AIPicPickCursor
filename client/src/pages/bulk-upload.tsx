@@ -135,7 +135,16 @@ export default function BulkUploadPage() {
     let actualPhotoCount = 0;
     try {
       console.log("🔍 Fetching photos for verification...");
-      const verifyResponse = await apiRequest("GET", `/api/sessions/${sessionId}/photos?limit=1000`);
+      
+      // Add timeout to prevent hanging
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error("Photo verification request timed out after 10 seconds")), 10000);
+      });
+      
+      const verifyResponse = await Promise.race([
+        apiRequest("GET", `/api/sessions/${sessionId}/photos?limit=1000`),
+        timeoutPromise
+      ]);
       console.log("✅ Verify response received", { 
         ok: verifyResponse.ok, 
         status: verifyResponse.status,
