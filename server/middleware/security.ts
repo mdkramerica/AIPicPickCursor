@@ -24,25 +24,30 @@ export const securityHeaders = (req: Request, res: Response, next: NextFunction)
     "camera=(), microphone=(), geolocation=()"
   );
 
-  // Content Security Policy (adjust based on your needs)
-  if (process.env.NODE_ENV === "production") {
-    res.setHeader(
-      "Content-Security-Policy",
-      [
-        "default-src 'self'",
-        "img-src 'self' data: https: blob:",
-        "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.kinde.com",
-        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://*.kinde.com",
-        "font-src 'self' data: https://fonts.gstatic.com",
-        "connect-src 'self' https://*.kinde.com https://*.r2.cloudflarestorage.com",
-        "frame-src https://*.kinde.com",
-        "worker-src 'self' blob:",
-        "child-src 'self' blob:",
-        "frame-ancestors 'none'",
-      ].join("; ")
-    );
+  // Content Security Policy
+  // Note: TensorFlow.js and face-api.js require 'unsafe-eval' for:
+  // - Dynamic code generation (WASM compilation)
+  // - Web Workers that use eval()
+  // - Dynamic model loading
+  
+  // Apply CSP in both environments (TensorFlow.js needs it everywhere)
+  const cspDirectives = [
+    "default-src 'self'",
+    "img-src 'self' data: https: blob:",
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.kinde.com",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://*.kinde.com",
+    "font-src 'self' data: https://fonts.gstatic.com",
+    "connect-src 'self' https://*.kinde.com https://*.r2.cloudflarestorage.com https://*.cloudflarestorage.com",
+    "frame-src https://*.kinde.com",
+    "worker-src 'self' blob: 'unsafe-eval'", // Required for TensorFlow.js Web Workers
+    "child-src 'self' blob:",
+    "frame-ancestors 'none'",
+  ];
 
-    // HSTS - enforce HTTPS (only in production)
+  res.setHeader("Content-Security-Policy", cspDirectives.join("; "));
+
+  // HSTS - enforce HTTPS (only in production)
+  if (process.env.NODE_ENV === "production") {
     res.setHeader(
       "Strict-Transport-Security",
       "max-age=31536000; includeSubDomains; preload"
