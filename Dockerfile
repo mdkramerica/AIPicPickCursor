@@ -33,6 +33,6 @@ EXPOSE 5000
 # Set production environment
 ENV NODE_ENV=production
 
-# Start application
-CMD ["npm", "start"]
-
+# Start application - Railway will use startCommand from railway.json
+# But this ensures the container can start if Railway doesn't override
+CMD ["npx", "tsx", "dist/server/index.ts"]
