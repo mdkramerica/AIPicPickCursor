@@ -21,7 +21,20 @@ RUN npm ci
 # Copy application files
 COPY . .
 
-# Build application
+# Build arguments for Vite environment variables
+# Railway provides these as environment variables during build
+ARG VITE_KINDE_DOMAIN
+ARG VITE_KINDE_CLIENT_ID
+ARG VITE_KINDE_REDIRECT_URL
+ARG VITE_KINDE_LOGOUT_REDIRECT_URL
+
+# Set as environment variables so Vite can access them during build
+ENV VITE_KINDE_DOMAIN=$VITE_KINDE_DOMAIN
+ENV VITE_KINDE_CLIENT_ID=$VITE_KINDE_CLIENT_ID
+ENV VITE_KINDE_REDIRECT_URL=$VITE_KINDE_REDIRECT_URL
+ENV VITE_KINDE_LOGOUT_REDIRECT_URL=$VITE_KINDE_LOGOUT_REDIRECT_URL
+
+# Build application (Vite will embed these variables in the bundle)
 RUN npm run build
 
 # Prune devDependencies after build to reduce image size
