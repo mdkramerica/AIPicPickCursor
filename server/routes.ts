@@ -841,9 +841,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Get photos in the session
       const photos = await storage.getPhotosBySession(sessionId);
+      logger.info(`Photo count check for grouping`, {
+        sessionId,
+        userId,
+        photoCount: photos.length,
+        photoIds: photos.map(p => p.id).slice(0, 5) // Log first 5 photo IDs for debugging
+      });
+
       if (photos.length < 2) {
         logger.warn(`Insufficient photos for grouping: ${photos.length} < 2`, { sessionId, userId });
-        throw new AppError(400, "Need at least 2 photos to perform grouping");
+        throw new AppError(400, `Need at least 2 photos to perform grouping. Currently found ${photos.length} photo(s). Please ensure uploads have completed before starting grouping.`);
       }
       
       // Get grouping options from request body

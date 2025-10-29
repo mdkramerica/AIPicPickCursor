@@ -107,11 +107,59 @@ export default function BulkUploadPage() {
     }
     
     console.log("🔍 Starting grouping analysis", { sessionId, photoCount: successCount });
-    
+
+    // 0. VERIFY PHOTOS ARE SAVED - Add a small delay and verify photo count
+    console.log("⏳ Waiting for photos to be fully saved...");
+    await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second for DB commits
+
+    // Verify photos are in the database before starting grouping
+    let actualPhotoCount = 0;
+    try {
+      const verifyResponse = await apiRequest("GET", `/api/sessions/${sessionId}/photos`);
+      if (verifyResponse.ok) {
+        const photos = await verifyResponse.json();
+        actualPhotoCount = photos.length;
+        console.log("📊 Photo verification", {
+          sessionId,
+          actualPhotoCount,
+          expectedCount: successCount
+        });
+
+        if (actualPhotoCount < 2) {
+          console.warn("⚠️ Not enough photos saved yet, waiting longer...");
+          await new Promise(resolve => setTimeout(resolve, 2000)); // Wait another 2 seconds
+
+          // Verify again after waiting
+          const retryResponse = await apiRequest("GET", `/api/sessions/${sessionId}/photos`);
+          if (retryResponse.ok) {
+            const retryPhotos = await retryResponse.json();
+            actualPhotoCount = retryPhotos.length;
+            console.log("📊 Photo verification (retry)", {
+              sessionId,
+              actualPhotoCount,
+              expectedCount: successCount
+            });
+          }
+        }
+
+        // If still not enough photos, show error and don't proceed
+        if (actualPhotoCount < 2) {
+          toast({
+            title: "Not enough photos",
+            description: `Only ${actualPhotoCount} photo(s) were saved. Need at least 2 photos for grouping. Please try uploading again.`,
+            variant: "destructive",
+          });
+          return;
+        }
+      }
+    } catch (verifyError) {
+      console.warn("⚠️ Could not verify photo count, proceeding anyway", { verifyError });
+    }
+
     // 1. DEPENDENCY VALIDATION - Validate AI dependencies before starting
     console.log("🔧 Validating AI dependencies...");
     const dependencyCheck = await validateAIDependencies();
-    
+
     if (!dependencyCheck.available) {
       console.error("❌ AI dependencies not available", { errors: dependencyCheck.errors });
       toast({
@@ -123,7 +171,7 @@ export default function BulkUploadPage() {
     } else {
       console.log("✅ AI dependencies validated successfully");
     }
-    
+
     // 2. ENHANCED ERROR HANDLING - Start grouping with detailed error tracking
     try {
       const response = await apiRequest("POST", `/api/sessions/${sessionId}/group-analyze`, {
