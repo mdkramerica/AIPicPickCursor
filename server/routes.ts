@@ -614,12 +614,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Get current progress from in-memory store
-      const progress = photoAnalysisService.getProgress(sessionId);
+      let progress = photoAnalysisService.getProgress(sessionId);
+
+      // Get photos once for all checks
+      const photos = await storage.getPhotosBySession(sessionId);
 
       if (!progress) {
         // No progress yet - check session status as fallback
-        // If session is analyzing but no progress, analysis might have failed
+        // If session is analyzing but no progress, analysis might have failed or completed
         if (session.status === "analyzing") {
+          // Check if photos have analysis data - if so, analysis completed, now grouping
+          const analyzedCount = photos.filter(p => p.qualityScore && p.analysisData).length;
+          
+          if (analyzedCount > 0 && analyzedCount === photos.length) {
+            // Analysis completed, now grouping - show progress at 90% (grouping is final 10%)
+            res.json({ 
+              progress: {
+                sessionId,
+                currentPhoto: photos.length,
+                totalPhotos: photos.length,
+                percentage: 90, // Analysis done, grouping in progress
+                status: 'selecting_best' as const,
+                message: `Analysis complete (${analyzedCount}/${photos.length} photos). Grouping photos by scene...`,
+              }
+            });
+            return;
+          } else if (analyzedCount > 0 && analyzedCount < photos.length) {
+            // Partial analysis - show actual progress
+            const analysisProgress = (analyzedCount / photos.length) * 90; // Reserve 10% for grouping
+            res.json({ 
+              progress: {
+                sessionId,
+                currentPhoto: analyzedCount,
+                totalPhotos: photos.length,
+                percentage: Math.round(analysisProgress),
+                status: 'analyzing' as const,
+                message: `Analyzing photos... (${analyzedCount}/${photos.length} complete)`,
+              }
+            });
+            return;
+          }
+          
           // Return minimal progress indicating analysis is running but no detailed progress yet
           res.json({ 
             progress: {
@@ -632,6 +667,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
             }
           });
           return;
+        }
+        
+        // If session is completed or failed but photos have analysis data, return completed progress
+        if (session.status === "completed" || session.status === "failed") {
+          const analyzedCount = photos.filter(p => p.qualityScore && p.analysisData).length;
+          
+          if (analyzedCount > 0) {
+            res.json({ 
+              progress: {
+                sessionId,
+                currentPhoto: analyzedCount,
+                totalPhotos: photos.length,
+                percentage: 100,
+                status: 'complete' as const,
+                message: 'Analysis complete',
+              }
+            });
+            return;
+          }
         }
         
         // No progress and not analyzing - return null
@@ -1139,7 +1193,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           logger.info(`Photos updated with analysis data`, {
             sessionId,
             userId,
-            updatedCount,
+            updateCount,
             expectedCount: analysisResult.analyses.length
           });
           
@@ -1388,6 +1442,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
           missingDependencies: (groupingError as any).missingDependencies
         });
         
+        // IMPORTANT: If analysis succeeded but grouping failed, still mark as completed
+        // Analysis is what enables comparison view, so users should still be able to compare photos
+        const allPhotosAnalyzed = photos.every(p => 
+          p.qualityScore && parseFloat(p.qualityScore) > 0 && p.analysisData
+        );
+        
+        if (allPhotosAnalyzed) {
+          logger.warn(`Grouping failed but analysis succeeded - marking session as completed anyway`, {
+            sessionId,
+            userId,
+            photoCount: photos.length,
+            groupingError: groupingError instanceof Error ? groupingError.message : 'Unknown error'
+          });
+          
+          // Mark session as completed even though grouping failed
+          await storage.updateSession(sessionId, {
+            status: "completed",
+          });
+          
+          // Return partial success - analysis worked, grouping didn't
+          res.json({
+            sessionId,
+            groups: [],
+            totalGroups: 0,
+            options: groupingOptions,
+            analysisCompleted: true,
+            groupingFailed: true,
+            message: `Photos analyzed successfully, but grouping failed: ${groupingError instanceof Error ? groupingError.message : 'Unknown error'}. You can still view and compare your photos.`,
+          });
+          return;
+        }
+        
+        // If analysis also failed, throw error as before
         // Check if it's a dependency error (either from string match or explicit flag)
         const errorMessage = groupingError instanceof Error ? groupingError.message.toLowerCase() : '';
         const isDependencyError = (groupingError as any).isDependencyError || 

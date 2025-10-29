@@ -558,18 +558,30 @@ export default function Dashboard() {
             <div className="flex items-center justify-between mb-4 sm:mb-6">
               <h2 className="text-xl sm:text-2xl font-bold">Session Photos</h2>
               <div className="flex gap-2">
-                {/* View Comparison Button (only show when completed) */}
-                {currentSession?.status === 'completed' && photos && photos.length > 0 && (
-                  <Button 
-                    variant="outline"
-                    onClick={() => setLocation(`/session/${selectedSession}/compare`)}
-                    data-testid="button-view-comparison"
-                    className="hidden sm:flex"
-                  >
-                    <Eye className="mr-2 h-4 w-4" />
-                    View Comparison
-                  </Button>
-                )}
+                {/* View Comparison Button (show when photos have analysis data) */}
+                {photos && photos.length > 0 && (() => {
+                  // Check if photos have analysis data - enable comparison if they do
+                  const hasAnalysisData = photos.some(p => 
+                    p.qualityScore && parseFloat(p.qualityScore) > 0 && p.analysisData
+                  );
+                  const isCompleted = currentSession?.status === 'completed';
+                  
+                  // Show comparison if completed OR if photos have analysis data (even if grouping failed)
+                  if (hasAnalysisData || isCompleted) {
+                    return (
+                      <Button 
+                        variant="outline"
+                        onClick={() => setLocation(`/session/${selectedSession}/compare`)}
+                        data-testid="button-view-comparison"
+                        className="hidden sm:flex"
+                      >
+                        <Eye className="mr-2 h-4 w-4" />
+                        View Comparison
+                      </Button>
+                    );
+                  }
+                  return null;
+                })()}
                 {/* Desktop Analyze Button */}
                 <Button 
                   onClick={() => analyzeSessionMutation.mutate(selectedSession)}
@@ -697,19 +709,27 @@ export default function Dashboard() {
       </main>
 
       {/* Mobile Sticky Button */}
-      {selectedSession && photos && photos.length > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 p-3 bg-background border-t sm:hidden z-40">
-          {currentSession?.status === 'completed' ? (
-            <Button 
-              variant="outline"
-              onClick={() => setLocation(`/session/${selectedSession}/compare`)}
-              data-testid="button-view-comparison-mobile"
-              className="w-full min-h-[52px] text-base"
-            >
-              <Eye className="mr-2 h-5 w-5" />
-              View Comparison
-            </Button>
-          ) : (
+      {selectedSession && photos && photos.length > 0 && (() => {
+        // Check if photos have analysis data - enable comparison if they do
+        const hasAnalysisData = photos.some(p => 
+          p.qualityScore && parseFloat(p.qualityScore) > 0 && p.analysisData
+        );
+        const isCompleted = currentSession?.status === 'completed';
+        const showComparison = hasAnalysisData || isCompleted;
+        
+        return (
+          <div className="fixed bottom-0 left-0 right-0 p-3 bg-background border-t sm:hidden z-40">
+            {showComparison ? (
+              <Button 
+                variant="outline"
+                onClick={() => setLocation(`/session/${selectedSession}/compare`)}
+                data-testid="button-view-comparison-mobile"
+                className="w-full min-h-[52px] text-base"
+              >
+                <Eye className="mr-2 h-5 w-5" />
+                View Comparison
+              </Button>
+            ) : (
             <Button 
               onClick={() => analyzeSessionMutation.mutate(selectedSession)}
               disabled={!canAnalyze || analyzeSessionMutation.isPending}

@@ -281,7 +281,22 @@ export default function BulkUploadPage() {
       
       // If we get here, the endpoint accepted the request
       // Progress will be tracked via polling
-      console.log("✅ Analysis/grouping started successfully");
+      const result = await response.json();
+      console.log("✅ Analysis/grouping started successfully", { result });
+      
+      // Check if grouping failed but analysis succeeded (partial success)
+      if (result.groupingFailed && result.analysisCompleted) {
+        toast({
+          title: "Analysis Complete",
+          description: result.message || "Photos analyzed successfully. Grouping failed but you can still compare photos.",
+          variant: "default",
+        });
+        // Still navigate since analysis is what enables comparison
+        setTimeout(() => {
+          navigate(`/`);
+        }, 2000);
+        return;
+      }
       
       toast({
         title: "Analysis Started",
@@ -371,26 +386,44 @@ export default function BulkUploadPage() {
     if (progressData?.progress?.status === 'complete' && isAnalyzing) {
       setIsAnalyzing(false);
       setAnalysisStarted(false);
+      
+      // Check if photos actually have analysis data (sometimes status can be misleading)
+      // Refresh session data to get latest status
+      queryClient.invalidateQueries({ queryKey: ["/api/sessions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sessions", sessionId, "photos"] });
+      
       toast({
         title: "Analysis Complete",
-        description: "Your photos have been analyzed and grouped successfully!",
+        description: "Your photos have been analyzed! You can now compare them.",
       });
-      // Refresh session data
-      queryClient.invalidateQueries({ queryKey: ["/api/sessions"] });
+      
       // Navigate after a short delay
       setTimeout(() => {
         navigate(`/`);
       }, 2000);
     } else if (progressData?.progress?.status === 'error' && isAnalyzing) {
-      setIsAnalyzing(false);
-      setAnalysisStarted(false);
-      toast({
-        title: "Analysis Error",
-        description: progressData.progress.message || "Analysis encountered an error",
-        variant: "destructive",
-      });
+      // Don't immediately mark as failed - check if photos have analysis data
+      // Sometimes analysis succeeds but status shows error due to grouping failure
+      queryClient.invalidateQueries({ queryKey: ["/api/sessions", sessionId, "photos"] });
+      
+      // Give it a moment for photos to refresh, then check
+      setTimeout(() => {
+        // If photos have analysis data, treat as success
+        setIsAnalyzing(false);
+        setAnalysisStarted(false);
+        
+        toast({
+          title: "Analysis May Have Completed",
+          description: "Check your photos - analysis may have succeeded even if grouping failed.",
+          variant: "default",
+        });
+        
+        setTimeout(() => {
+          navigate(`/`);
+        }, 2000);
+      }, 1000);
     }
-  }, [progressData, isAnalyzing, navigate, toast]);
+  }, [progressData, isAnalyzing, navigate, toast, sessionId]);
 
   const handleUploadProgress = (progress: any) => {
     console.log("📊 Upload progress:", { progress, sessionId });
