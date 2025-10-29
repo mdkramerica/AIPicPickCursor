@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, CheckCircle2, AlertCircle, Eye, EyeOff, Smile, Share2 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
+import { apiRequest } from "@/lib/queryClient";
 
 type Photo = {
   id: string;
@@ -44,10 +45,28 @@ export default function Comparison() {
   const [isSharing, setIsSharing] = useState(false);
   const [presignedUrls, setPresignedUrls] = useState<Record<string, string>>({});
 
-  const { data: photos, isLoading } = useQuery<Photo[]>({
+  // Fetch photos - handle paginated response structure
+  const { data: photosResponse, isLoading } = useQuery<{
+    data: Photo[];
+    pagination?: {
+      page: number;
+      limit: number;
+      total: number;
+      totalPages: number;
+    };
+  } | Photo[]>({
     queryKey: ["/api/sessions", sessionId, "photos"],
     enabled: !!sessionId && !!user,
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/sessions/${sessionId}/photos?limit=1000`);
+      return await res.json();
+    },
   });
+
+  // Extract photos array from response (handle both paginated and non-paginated formats)
+  const photos = Array.isArray(photosResponse) 
+    ? photosResponse 
+    : (photosResponse?.data || []);
 
   // Fetch presigned URLs for all photos
   const { data: presignedData, isLoading: presignedLoading } = useQuery<{
@@ -246,7 +265,7 @@ export default function Comparison() {
     });
 
   // If no photos have analysis data or faces, show helpful message
-  if (sortedPhotos.length === 0 && photos && photos.length > 0) {
+  if (sortedPhotos.length === 0 && photosArray && photosArray.length > 0) {
     return (
       <div className="min-h-screen bg-background">
         <div className="container mx-auto p-4 pb-20 max-w-7xl">
