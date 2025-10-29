@@ -230,7 +230,7 @@ export default function Comparison() {
   }
 
   // Filter out photos with 0 faces and sort by quality score
-  const sortedPhotos = [...photos]
+  const sortedPhotos = (photos || [])
     .filter(photo => {
       const faces = photo.analysisData?.faces || [];
       return faces.length > 0; // Only show photos with detected faces
