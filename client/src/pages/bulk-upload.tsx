@@ -134,49 +134,89 @@ export default function BulkUploadPage() {
     // Verify photos are in the database before starting grouping
     let actualPhotoCount = 0;
     try {
+      console.log("🔍 Fetching photos for verification...");
       const verifyResponse = await apiRequest("GET", `/api/sessions/${sessionId}/photos?limit=1000`);
-      if (verifyResponse.ok) {
-        const responseData = await verifyResponse.json();
-        // Handle paginated response format
-        const photos = responseData.data || responseData; // Support both paginated and non-paginated responses
-        actualPhotoCount = Array.isArray(photos) ? photos.length : 0;
-        console.log("📊 Photo verification", {
-          sessionId,
-          actualPhotoCount,
-          expectedCount: uploadedPhotoCount,
-          responseFormat: responseData.data ? 'paginated' : 'array'
+      console.log("✅ Verify response received", { 
+        ok: verifyResponse.ok, 
+        status: verifyResponse.status,
+        statusText: verifyResponse.statusText 
+      });
+      
+      if (!verifyResponse.ok) {
+        const errorText = await verifyResponse.text();
+        console.error("❌ Photo verification failed", {
+          status: verifyResponse.status,
+          statusText: verifyResponse.statusText,
+          errorText
         });
+        toast({
+          title: "Verification failed",
+          description: `Could not verify photos (${verifyResponse.status}). Please try again.`,
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      const responseData = await verifyResponse.json();
+      console.log("📦 Response data received", { 
+        hasData: !!responseData.data,
+        isArray: Array.isArray(responseData),
+        keys: Object.keys(responseData || {})
+      });
+      
+      // Handle paginated response format
+      const photos = responseData.data || (Array.isArray(responseData) ? responseData : []);
+      actualPhotoCount = Array.isArray(photos) ? photos.length : 0;
+      console.log("📊 Photo verification", {
+        sessionId,
+        actualPhotoCount,
+        expectedCount: uploadedPhotoCount,
+        responseFormat: responseData.data ? 'paginated' : (Array.isArray(responseData) ? 'array' : 'unknown')
+      });
 
-        if (actualPhotoCount < 2) {
-          console.warn("⚠️ Not enough photos saved yet, waiting longer...");
-          await new Promise(resolve => setTimeout(resolve, 2000)); // Wait another 2 seconds
+      if (actualPhotoCount < 2) {
+        console.warn("⚠️ Not enough photos saved yet, waiting longer...");
+        await new Promise(resolve => setTimeout(resolve, 2000)); // Wait another 2 seconds
 
-          // Verify again after waiting
-          const retryResponse = await apiRequest("GET", `/api/sessions/${sessionId}/photos?limit=1000`);
-          if (retryResponse.ok) {
-            const retryData = await retryResponse.json();
-            const retryPhotos = retryData.data || retryData;
-            actualPhotoCount = Array.isArray(retryPhotos) ? retryPhotos.length : 0;
-            console.log("📊 Photo verification (retry)", {
-              sessionId,
-              actualPhotoCount,
-              expectedCount: uploadedPhotoCount
-            });
-          }
-        }
-
-        // If still not enough photos, show error and don't proceed
-        if (actualPhotoCount < 2) {
-          toast({
-            title: "Not enough photos",
-            description: `Only ${actualPhotoCount} photo(s) were saved. Need at least 2 photos for grouping. Please try uploading again.`,
-            variant: "destructive",
+        // Verify again after waiting
+        console.log("🔍 Retrying photo verification...");
+        const retryResponse = await apiRequest("GET", `/api/sessions/${sessionId}/photos?limit=1000`);
+        if (retryResponse.ok) {
+          const retryData = await retryResponse.json();
+          const retryPhotos = retryData.data || (Array.isArray(retryData) ? retryData : []);
+          actualPhotoCount = Array.isArray(retryPhotos) ? retryPhotos.length : 0;
+          console.log("📊 Photo verification (retry)", {
+            sessionId,
+            actualPhotoCount,
+            expectedCount: uploadedPhotoCount
           });
-          return;
+        } else {
+          console.error("❌ Retry verification failed", {
+            status: retryResponse.status,
+            statusText: retryResponse.statusText
+          });
         }
       }
+
+      // If still not enough photos, show error and don't proceed
+      if (actualPhotoCount < 2) {
+        toast({
+          title: "Not enough photos",
+          description: `Only ${actualPhotoCount} photo(s) were saved. Need at least 2 photos for grouping. Please try uploading again.`,
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      console.log("✅ Photo verification successful", { actualPhotoCount });
     } catch (verifyError) {
-      console.warn("⚠️ Could not verify photo count, proceeding anyway", { verifyError });
+      console.error("❌ Photo verification error", verifyError);
+      toast({
+        title: "Verification error",
+        description: verifyError instanceof Error ? verifyError.message : "Could not verify photos. Please try again.",
+        variant: "destructive",
+      });
+      return; // Don't proceed if verification fails
     }
 
     // 1. DEPENDENCY VALIDATION - Validate AI dependencies before starting
