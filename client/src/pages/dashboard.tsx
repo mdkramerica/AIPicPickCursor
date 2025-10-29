@@ -236,6 +236,28 @@ export default function Dashboard() {
             }
           } catch (error) {
             console.error('❌ Error polling progress:', error);
+            
+            // Stop polling on 401 (unauthorized) - token expired
+            if (isUnauthorizedError(error as Error)) {
+              console.warn('⚠️ Token expired during progress polling, stopping');
+              if (progressIntervalRef.current) {
+                clearInterval(progressIntervalRef.current);
+                progressIntervalRef.current = null;
+              }
+              
+              toast({
+                title: "Session expired",
+                description: "Your session expired. Please refresh the page and try again.",
+                variant: "destructive",
+              });
+              
+              // Optionally redirect to login after a delay
+              setTimeout(() => {
+                window.location.href = "/api/login";
+              }, 2000);
+              
+              return; // Exit early to prevent further polling
+            }
           }
         }, 2000); // Poll every 2 seconds to avoid rate limits
       };

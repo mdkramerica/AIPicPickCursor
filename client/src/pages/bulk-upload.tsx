@@ -276,9 +276,10 @@ export default function BulkUploadPage() {
         description: `Analyzing ${uploadedPhotoCount} photos to find similar groups...`,
       });
       
-      // Navigate to results after a short delay
+      // Navigate to dashboard to view results
+      // Note: The grouping happens on the server - check the session in the dashboard to see groups
       setTimeout(() => {
-        navigate(`/sessions/${sessionId}/groups`);
+        navigate(`/`);
       }, 2000);
       
     } catch (error) {
