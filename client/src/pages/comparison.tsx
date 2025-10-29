@@ -232,14 +232,47 @@ export default function Comparison() {
   // Filter out photos with 0 faces and sort by quality score
   const sortedPhotos = (photos || [])
     .filter(photo => {
-      const faces = photo.analysisData?.faces || [];
-      return faces.length > 0; // Only show photos with detected faces
+      // Handle cases where analysisData might be null/undefined or not yet analyzed
+      if (!photo.analysisData) {
+        return false; // Skip photos without analysis data
+      }
+      const faces = photo.analysisData.faces || [];
+      return Array.isArray(faces) && faces.length > 0; // Only show photos with detected faces
     })
     .sort((a, b) => {
       const scoreA = parseFloat(a.qualityScore) || 0;
       const scoreB = parseFloat(b.qualityScore) || 0;
       return scoreB - scoreA;
     });
+
+  // If no photos have analysis data or faces, show helpful message
+  if (sortedPhotos.length === 0 && photos && photos.length > 0) {
+    return (
+      <div className="min-h-screen bg-background">
+        <div className="container mx-auto p-4 pb-20 max-w-7xl">
+          <Button
+            variant="ghost"
+            onClick={() => setLocation("/")}
+            className="mb-4"
+            data-testid="button-back"
+          >
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Back to Dashboard
+          </Button>
+          <div className="flex flex-col items-center justify-center min-h-[60vh] text-center">
+            <AlertCircle className="w-16 h-16 text-muted-foreground mb-4" />
+            <h2 className="text-2xl font-bold mb-2">No Analysis Data Available</h2>
+            <p className="text-muted-foreground mb-4 max-w-md">
+              Photos have been uploaded but haven't been analyzed yet. Please analyze your photos first to view the comparison.
+            </p>
+            <Button onClick={() => setLocation("/")}>
+              Go to Dashboard
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // Component for photo with properly aligned bounding boxes
   const PhotoWithBoundingBoxes = ({
@@ -342,7 +375,7 @@ export default function Comparison() {
             }}
             viewBox={`0 0 ${overlayDimensions.width} ${overlayDimensions.height}`}
           >
-            {faces.map((face, faceIdx) => {
+            {(Array.isArray(faces) ? faces : []).map((face, faceIdx) => {
               const x = face.boundingBox.x * overlayDimensions.width;
               const y = face.boundingBox.y * overlayDimensions.height;
               const width = face.boundingBox.width * overlayDimensions.width;
@@ -425,7 +458,9 @@ export default function Comparison() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {sortedPhotos.map((photo, index) => {
             const score = parseFloat(photo.qualityScore);
-            const faces = photo.analysisData?.faces || [];
+            const faces = (photo.analysisData?.faces && Array.isArray(photo.analysisData.faces)) 
+              ? photo.analysisData.faces 
+              : [];
             const issues = photo.analysisData?.issues;
 
             return (
