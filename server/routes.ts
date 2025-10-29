@@ -1055,6 +1055,158 @@ export async function registerRoutes(app: Express): Promise<Server> {
         throw new AppError(500, `AI grouping service unavailable. Missing dependencies: ${dependencyCheck.missingDependencies.join(', ')}. Please ensure all required packages are installed.`);
       }
     
+      // CRITICAL: Check if photos have been analyzed (have quality scores)
+      // For bulk uploads, photos need to be analyzed BEFORE grouping to select best photo from each scene
+      // Check for both qualityScore and analysisData to ensure complete analysis
+      const photosNeedingAnalysis = photos.filter(p => {
+        const hasQualityScore = p.qualityScore && parseFloat(p.qualityScore) > 0;
+        const hasAnalysisData = p.analysisData && (
+          typeof p.analysisData === 'object' || 
+          (typeof p.analysisData === 'string' && p.analysisData.length > 0)
+        );
+        return !hasQualityScore || !hasAnalysisData;
+      });
+      let needsAnalysis = photosNeedingAnalysis.length > 0; // Use let so it's accessible after the if block
+      
+      if (needsAnalysis) {
+        logger.info(`Photos need analysis before grouping`, {
+          sessionId,
+          userId,
+          totalPhotos: photos.length,
+          needsAnalysis: photosNeedingAnalysis.length,
+          alreadyAnalyzed: photos.length - photosNeedingAnalysis.length,
+          photosNeedingAnalysis: photosNeedingAnalysis.map(p => ({ id: p.id, hasQualityScore: !!p.qualityScore, hasAnalysisData: !!p.analysisData }))
+        });
+        
+        // Update session status to analyzing
+        await storage.updateSession(sessionId, {
+          status: "analyzing",
+        });
+        
+        try {
+          // Analyze all photos first (not just the ones needing analysis, to ensure consistency)
+          logger.info(`Starting photo analysis before grouping`, {
+            sessionId,
+            userId,
+            photoCount: photos.length,
+            analyzingAll: true // Analyze all to ensure consistency
+          });
+          
+          const analysisResult = await photoAnalysisService.analyzeSession(
+            sessionId,
+            photos.map(p => ({ id: p.id, fileUrl: p.fileUrl }))
+          );
+          
+          logger.info(`Photo analysis completed`, {
+            sessionId,
+            userId,
+            analyzedCount: analysisResult.analyses.length,
+            bestPhotoId: analysisResult.bestPhotoId,
+            expectedCount: photos.length
+          });
+          
+          // Verify all photos were analyzed
+          if (analysisResult.analyses.length !== photos.length) {
+            logger.warn(`Analysis count mismatch`, {
+              sessionId,
+              userId,
+              analyzedCount: analysisResult.analyses.length,
+              expectedCount: photos.length,
+              missingPhotos: photos.length - analysisResult.analyses.length
+            });
+          }
+          
+          // Update photos with analysis results
+          let updateCount = 0;
+          for (const analysis of analysisResult.analyses) {
+            try {
+              await storage.updatePhoto(analysis.photoId, {
+                qualityScore: analysis.overallQualityScore.toString(),
+                analysisData: analysis,
+              });
+              updateCount++;
+            } catch (updateError) {
+              logger.error(`Failed to update photo ${analysis.photoId} with analysis data`, {
+                sessionId,
+                userId,
+                photoId: analysis.photoId,
+                error: updateError instanceof Error ? updateError.message : 'Unknown error'
+              });
+              // Continue with other photos even if one fails
+            }
+          }
+          
+          logger.info(`Photos updated with analysis data`, {
+            sessionId,
+            userId,
+            updatedCount,
+            expectedCount: analysisResult.analyses.length
+          });
+          
+          // Reload photos to get updated quality scores and verify analysis succeeded
+          const updatedPhotos = await storage.getPhotosBySession(sessionId);
+          photos.length = 0; // Clear array
+          photos.push(...updatedPhotos); // Replace with updated photos
+          
+          // Verify all photos now have analysis data
+          const stillMissingAnalysis = photos.filter(p => {
+            const hasQualityScore = p.qualityScore && parseFloat(p.qualityScore) > 0;
+            const hasAnalysisData = p.analysisData && (
+              typeof p.analysisData === 'object' || 
+              (typeof p.analysisData === 'string' && p.analysisData.length > 0)
+            );
+            return !hasQualityScore || !hasAnalysisData;
+          });
+          
+          if (stillMissingAnalysis.length > 0) {
+            logger.error(`Some photos still missing analysis after update`, {
+              sessionId,
+              userId,
+              missingCount: stillMissingAnalysis.length,
+              photoIds: stillMissingAnalysis.map(p => p.id)
+            });
+            throw new AppError(500, `Failed to analyze ${stillMissingAnalysis.length} photo(s). Analysis may have partially failed.`);
+          }
+          
+          logger.info(`All photos successfully analyzed and verified`, {
+            sessionId,
+            userId,
+            totalPhotos: photos.length,
+            allHaveQualityScores: photos.every(p => p.qualityScore && parseFloat(p.qualityScore) > 0),
+            allHaveAnalysisData: photos.every(p => p.analysisData)
+          });
+          
+        } catch (analysisError) {
+          logger.error(`Photo analysis failed before grouping`, {
+            sessionId,
+            userId,
+            error: analysisError instanceof Error ? analysisError.message : 'Unknown error',
+            stack: analysisError instanceof Error ? analysisError.stack : undefined,
+          });
+          
+          // Update session status to failed
+          await storage.updateSession(sessionId, {
+            status: "failed",
+          }).catch(() => {
+            // Ignore errors updating status
+          });
+          
+          // Re-throw AppError instances as-is, wrap others
+          if (analysisError instanceof AppError) {
+            throw analysisError;
+          }
+          throw new AppError(500, `Photo analysis failed before grouping: ${analysisError instanceof Error ? analysisError.message : 'Unknown error'}`);
+        }
+      } else {
+        logger.info(`All photos already analyzed, proceeding directly to grouping`, {
+          sessionId,
+          userId,
+          photoCount: photos.length,
+          allHaveQualityScores: photos.every(p => p.qualityScore && parseFloat(p.qualityScore) > 0),
+          allHaveAnalysisData: photos.every(p => p.analysisData)
+        });
+      }
+    
       // Perform grouping analysis with error handling
       logger.info(`Starting photo grouping service`, { sessionId, userId, photoCount: photos.length });
       
@@ -1084,7 +1236,63 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const createdGroups = [];
         
         for (const cluster of clusters) {
-          // Create the group
+          // Get photo details for quality scoring
+          const clusterPhotos = photos.filter(p => cluster.photoIds.includes(p.id));
+          
+          // Find the best photo in this cluster (highest quality score)
+          // This is the key step: select the best photo from each scene/group
+          let bestPhotoId: string | null = null;
+          let bestQualityScore = -1;
+          
+          for (const photo of clusterPhotos) {
+            // Parse quality score - if analysis was done, this should be populated
+            const qualityScore = photo.qualityScore ? parseFloat(photo.qualityScore) : 0;
+            
+            // Also check analysisData for quality score if qualityScore field is missing
+            let effectiveQualityScore = qualityScore;
+            if (effectiveQualityScore === 0 && photo.analysisData) {
+              try {
+                const analysisData = typeof photo.analysisData === 'string' 
+                  ? JSON.parse(photo.analysisData) 
+                  : photo.analysisData;
+                if (analysisData?.overallQualityScore) {
+                  effectiveQualityScore = typeof analysisData.overallQualityScore === 'number' 
+                    ? analysisData.overallQualityScore 
+                    : parseFloat(analysisData.overallQualityScore);
+                }
+              } catch (e) {
+                logger.warn(`Failed to parse analysisData for photo ${photo.id}`, { error: e });
+              }
+            }
+            
+            if (effectiveQualityScore > bestQualityScore) {
+              bestQualityScore = effectiveQualityScore;
+              bestPhotoId = photo.id;
+            }
+          }
+          
+          // If no quality scores available (shouldn't happen if analysis ran), use first photo as fallback
+          if (!bestPhotoId && clusterPhotos.length > 0) {
+            bestPhotoId = clusterPhotos[0].id;
+            logger.warn(`No quality scores found for cluster, using first photo as best (analysis may have failed)`, {
+              sessionId,
+              clusterId: cluster.id,
+              photoId: bestPhotoId,
+              photoCount: clusterPhotos.length
+            });
+          }
+          
+          if (bestPhotoId) {
+            logger.info(`Selected best photo for scene/group`, {
+              sessionId,
+              clusterId: cluster.id,
+              bestPhotoId,
+              qualityScore: bestQualityScore,
+              totalPhotosInScene: clusterPhotos.length
+            });
+          }
+          
+          // Create the group with best photo ID
           const group = await storage.createGroup({
             sessionId,
             name: `Group ${createdGroups.length + 1}`,
@@ -1093,6 +1301,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             similarityScore: cluster.avgSimilarity.toString(),
             timeWindowStart: cluster.timeWindow.start,
             timeWindowEnd: cluster.timeWindow.end,
+            bestPhotoId: bestPhotoId || undefined,
           });
           
           // Add photos to the group
@@ -1102,10 +1311,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
             });
           }
           
+          // Mark the best photo in the group
+          if (bestPhotoId) {
+            await storage.updatePhoto(bestPhotoId, { isSelectedBest: true });
+            logger.info(`Set best photo for group`, {
+              sessionId,
+              groupId: group.id,
+              bestPhotoId,
+              qualityScore: bestQualityScore,
+              totalPhotosInGroup: cluster.photoIds.length
+            });
+          }
+          
           createdGroups.push({
             ...group,
             photoCount: cluster.photoIds.length,
             photoIds: cluster.photoIds,
+            bestPhotoId,
+          });
+        }
+        
+        // Verify all groups have best photos selected
+        const groupsWithoutBestPhoto = createdGroups.filter(g => !g.bestPhotoId);
+        if (groupsWithoutBestPhoto.length > 0) {
+          logger.warn(`Some groups missing best photo selection`, {
+            sessionId,
+            userId,
+            groupsWithoutBestPhoto: groupsWithoutBestPhoto.length,
+            totalGroups: createdGroups.length
+          });
+        }
+        
+        // Verify all best photos have quality scores (they should, since we analyzed before grouping)
+        const bestPhotoIds = createdGroups.filter(g => g.bestPhotoId).map(g => g.bestPhotoId!);
+        const bestPhotos = photos.filter(p => bestPhotoIds.includes(p.id));
+        const bestPhotosWithoutQuality = bestPhotos.filter(p => !p.qualityScore || parseFloat(p.qualityScore) === 0);
+        if (bestPhotosWithoutQuality.length > 0) {
+          logger.error(`Best photos selected but missing quality scores - this should not happen`, {
+            sessionId,
+            userId,
+            missingQualityCount: bestPhotosWithoutQuality.length,
+            photoIds: bestPhotosWithoutQuality.map(p => p.id)
           });
         }
         
@@ -1113,7 +1359,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
           sessionId,
           userId,
           groupsCreated: createdGroups.length,
-          totalPhotos: createdGroups.reduce((sum, g) => sum + g.photoCount, 0)
+          totalPhotos: createdGroups.reduce((sum, g) => sum + g.photoCount, 0),
+          groupsWithBestPhoto: createdGroups.filter(g => g.bestPhotoId).length,
+          groupsWithoutBestPhoto: groupsWithoutBestPhoto.length,
+          allBestPhotosHaveQualityScores: bestPhotosWithoutQuality.length === 0
+        });
+        
+        // Update session status to completed after successful grouping
+        await storage.updateSession(sessionId, {
+          status: "completed",
         });
         
         res.json({
@@ -1121,6 +1375,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           groups: createdGroups,
           totalGroups: createdGroups.length,
           options: groupingOptions,
+          analysisCompleted: needsAnalysis, // Indicate if analysis was run as part of this request
         });
         
       } catch (groupingError) {
