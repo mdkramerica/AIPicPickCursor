@@ -523,85 +523,59 @@ export class PhotoAnalysisService {
     // Ensure models are loaded
     await this.loadModels();
 
-    // Analyze all photos with error handling
+    // Analyze all photos with error handling - process in parallel batches
     const analyses: PhotoAnalysisResult[] = [];
+    const CONCURRENT_ANALYSES = 3; // Analyze 3 photos at a time (lower than uploads due to CPU/GPU intensity)
+    let completedCount = 0;
 
-    for (let i = 0; i < photos.length; i++) {
-      const photo = photos[i];
+    // Helper function to apply face exclusions and recalculate quality
+    const applyFaceSelections = (analysis: PhotoAnalysisResult, photoId: string): PhotoAnalysisResult => {
+      if (!faceSelections || !faceSelections[photoId]) {
+        return analysis;
+      }
 
-      // Emit progress for current photo
-      const progressPercentage = Math.round(((i) / totalPhotos) * 100);
-      this.emitProgress({
-        sessionId,
-        currentPhoto: i + 1,
-        totalPhotos,
-        percentage: progressPercentage,
-        status: 'analyzing',
-        message: `Analyzing photo ${i + 1} of ${totalPhotos}...`,
-        currentPhotoId: photo.id,
-      });
-
-      try {
-        const analysis = await this.analyzePhoto(photo.fileUrl, photo.id);
+      const photoSelections = faceSelections[photoId];
+      const includedFaces = analysis.faces.filter((_, idx) => photoSelections[idx] !== false);
+      
+      if (includedFaces.length > 0) {
+        // Recalculate overall quality based on included faces only
+        const eyesOpenCount = includedFaces.filter(f => f.attributes.eyesOpen.detected).length;
+        const smilingCount = includedFaces.filter(f => f.attributes.smile.detected).length;
+        const avgFaceQuality = includedFaces.reduce((sum, f) => sum + f.qualityScore, 0) / includedFaces.length;
         
-        // Apply face exclusions if provided
-        if (faceSelections && faceSelections[photo.id]) {
-          const photoSelections = faceSelections[photo.id];
-          
-          // Filter out excluded faces and recalculate quality score
-          const includedFaces = analysis.faces.filter((_, idx) => photoSelections[idx] !== false);
-          
-          if (includedFaces.length > 0) {
-            // Recalculate overall quality based on included faces only
-            const eyesOpenCount = includedFaces.filter(f => f.attributes.eyesOpen.detected).length;
-            const smilingCount = includedFaces.filter(f => f.attributes.smile.detected).length;
-            const avgFaceQuality = includedFaces.reduce((sum, f) => sum + f.qualityScore, 0) / includedFaces.length;
-            
-            const eyesOpenScore = (eyesOpenCount / includedFaces.length) * 40;
-            const smilingScore = (smilingCount / includedFaces.length) * 40;
-            const faceQualityScore = (avgFaceQuality / 100) * 20;
-            
-            const overallQualityScore = eyesOpenScore + smilingScore + faceQualityScore;
-            
-            const closedEyes = includedFaces.length - eyesOpenCount;
-            const poorExpressions = includedFaces.filter(f => 
-              f.attributes.expression === 'sad' || f.attributes.expression === 'angry'
-            ).length;
-
-            let recommendation: 'best' | 'good' | 'acceptable' | 'poor';
-            if (overallQualityScore >= 85) recommendation = 'best';
-            else if (overallQualityScore >= 70) recommendation = 'good';
-            else if (overallQualityScore >= 50) recommendation = 'acceptable';
-            else recommendation = 'poor';
-
-            // Update analysis with filtered results
-            analysis.faces = includedFaces;
-            analysis.overallQualityScore = overallQualityScore;
-            analysis.issues = {
-              closedEyes,
-              poorExpressions,
-              blurryFaces: 0,
-            };
-            analysis.recommendation = recommendation;
-          } else {
-            // All faces excluded - mark as poor quality with reset issues
-            analysis.faces = [];
-            analysis.overallQualityScore = 0;
-            analysis.issues = {
-              closedEyes: 0,
-              poorExpressions: 0,
-              blurryFaces: 0,
-            };
-            analysis.recommendation = 'poor';
-          }
-        }
+        const eyesOpenScore = (eyesOpenCount / includedFaces.length) * 40;
+        const smilingScore = (smilingCount / includedFaces.length) * 40;
+        const faceQualityScore = (avgFaceQuality / 100) * 20;
         
-        analyses.push(analysis);
-      } catch (error) {
-        console.error(`Failed to analyze photo ${photo.id}:`, error);
-        // Add failed analysis result
-        analyses.push({
-          photoId: photo.id,
+        const overallQualityScore = eyesOpenScore + smilingScore + faceQualityScore;
+        
+        const closedEyes = includedFaces.length - eyesOpenCount;
+        const poorExpressions = includedFaces.filter(f => 
+          f.attributes.expression === 'sad' || f.attributes.expression === 'angry'
+        ).length;
+
+        let recommendation: 'best' | 'good' | 'acceptable' | 'poor';
+        if (overallQualityScore >= 85) recommendation = 'best';
+        else if (overallQualityScore >= 70) recommendation = 'good';
+        else if (overallQualityScore >= 50) recommendation = 'acceptable';
+        else recommendation = 'poor';
+
+        // Update analysis with filtered results
+        return {
+          ...analysis,
+          faces: includedFaces,
+          overallQualityScore,
+          issues: {
+            closedEyes,
+            poorExpressions,
+            blurryFaces: 0,
+          },
+          recommendation,
+        };
+      } else {
+        // All faces excluded - mark as poor quality
+        return {
+          ...analysis,
           faces: [],
           overallQualityScore: 0,
           issues: {
@@ -610,7 +584,88 @@ export class PhotoAnalysisService {
             blurryFaces: 0,
           },
           recommendation: 'poor',
-        });
+        };
+      }
+    };
+
+    // Process photos in parallel batches
+    for (let i = 0; i < photos.length; i += CONCURRENT_ANALYSES) {
+      const batch = photos.slice(i, i + CONCURRENT_ANALYSES);
+      
+      // Analyze batch in parallel
+      const batchPromises = batch.map(async (photo, batchIndex) => {
+        try {
+          const analysis = await this.analyzePhoto(photo.fileUrl, photo.id);
+          const finalAnalysis = applyFaceSelections(analysis, photo.id);
+          
+          // Update progress as each photo completes (not sequentially)
+          completedCount++;
+          const progressPercentage = Math.round((completedCount / totalPhotos) * 100);
+          this.emitProgress({
+            sessionId,
+            currentPhoto: completedCount,
+            totalPhotos,
+            percentage: progressPercentage,
+            status: 'analyzing',
+            message: `Analyzing photo ${completedCount} of ${totalPhotos}...`,
+            currentPhotoId: photo.id,
+          });
+          
+          return { photo, analysis: finalAnalysis, success: true };
+        } catch (error) {
+          console.error(`Failed to analyze photo ${photo.id}:`, error);
+          completedCount++;
+          const progressPercentage = Math.round((completedCount / totalPhotos) * 100);
+          this.emitProgress({
+            sessionId,
+            currentPhoto: completedCount,
+            totalPhotos,
+            percentage: progressPercentage,
+            status: 'analyzing',
+            message: `Analyzing photo ${completedCount} of ${totalPhotos}...`,
+            currentPhotoId: photo.id,
+          });
+          
+          return {
+            photo,
+            analysis: {
+              photoId: photo.id,
+              faces: [],
+              overallQualityScore: 0,
+              issues: {
+                closedEyes: 0,
+                poorExpressions: 0,
+                blurryFaces: 0,
+              },
+              recommendation: 'poor' as const,
+            },
+            success: false,
+          };
+        }
+      });
+
+      // Wait for batch to complete (all analyses in parallel)
+      const batchResults = await Promise.allSettled(batchPromises);
+      
+      // Process batch results and add to analyses array
+      for (const settledResult of batchResults) {
+        if (settledResult.status === 'fulfilled') {
+          analyses.push(settledResult.value.analysis);
+        } else {
+          // If the promise itself failed (shouldn't happen with allSettled, but handle it)
+          const photo = batch[batchResults.indexOf(settledResult)];
+          analyses.push({
+            photoId: photo.id,
+            faces: [],
+            overallQualityScore: 0,
+            issues: {
+              closedEyes: 0,
+              poorExpressions: 0,
+              blurryFaces: 0,
+            },
+            recommendation: 'poor',
+          });
+        }
       }
     }
 
@@ -720,46 +775,81 @@ export class PhotoAnalysisService {
     await this.loadModels();
     
     const results = new Map<string, PhotoAnalysisResult>();
+    const CONCURRENT_ANALYSES = 3; // Same concurrency limit as main analysis
+    let completedCount = 0;
     
-    for (let i = 0; i < photos.length; i++) {
-      const photo = photos[i];
+    // Process photos in parallel batches
+    for (let i = 0; i < photos.length; i += CONCURRENT_ANALYSES) {
+      const batch = photos.slice(i, i + CONCURRENT_ANALYSES);
       
-      // Check if we have cached analysis first
-      const cached = await this.getCachedAnalysis(photo.id);
-      if (cached) {
-        results.set(photo.id, cached);
-        onProgress?.(i + 1, photos.length, photo.id);
-        continue;
-      }
+      // Process batch in parallel
+      const batchPromises = batch.map(async (photo) => {
+        // Check if we have cached analysis first
+        const cached = await this.getCachedAnalysis(photo.id);
+        if (cached) {
+          completedCount++;
+          onProgress?.(completedCount, photos.length, photo.id);
+          return { photo, analysis: cached, cached: true };
+        }
+        
+        try {
+          // For grouping, we can use a faster analysis mode
+          const analysis = await this.analyzePhoto(photo.fileUrl, photo.id);
+          
+          // Cache the analysis (non-blocking)
+          storage.updatePhoto(photo.id, {
+            analysisData: analysis,
+            qualityScore: analysis.overallQualityScore.toString(),
+          }).catch(err => console.error(`Failed to cache analysis for ${photo.id}:`, err));
+          
+          completedCount++;
+          onProgress?.(completedCount, photos.length, photo.id);
+          
+          return { photo, analysis, cached: false };
+        } catch (error) {
+          console.error(`Failed to analyze photo ${photo.id} for grouping:`, error);
+          completedCount++;
+          onProgress?.(completedCount, photos.length, photo.id);
+          
+          // Add a fallback analysis
+          const fallbackAnalysis: PhotoAnalysisResult = {
+            photoId: photo.id,
+            faces: [],
+            overallQualityScore: 0,
+            issues: {
+              closedEyes: 0,
+              poorExpressions: 0,
+              blurryFaces: 0,
+            },
+            recommendation: 'poor',
+          };
+          return { photo, analysis: fallbackAnalysis, cached: false };
+        }
+      });
+
+      // Wait for batch to complete (all analyses in parallel)
+      const batchResults = await Promise.allSettled(batchPromises);
       
-      try {
-        onProgress?.(i + 1, photos.length, photo.id);
-        
-        // For grouping, we can use a faster analysis mode
-        const analysis = await this.analyzePhoto(photo.fileUrl, photo.id);
-        results.set(photo.id, analysis);
-        
-        // Cache the analysis
-        await storage.updatePhoto(photo.id, {
-          analysisData: analysis,
-          qualityScore: analysis.overallQualityScore.toString(),
-        });
-        
-      } catch (error) {
-        console.error(`Failed to analyze photo ${photo.id} for grouping:`, error);
-        // Add a fallback analysis
-        const fallbackAnalysis: PhotoAnalysisResult = {
-          photoId: photo.id,
-          faces: [],
-          overallQualityScore: 0,
-          issues: {
-            closedEyes: 0,
-            poorExpressions: 0,
-            blurryFaces: 0,
-          },
-          recommendation: 'poor',
-        };
-        results.set(photo.id, fallbackAnalysis);
+      // Process batch results
+      for (const settledResult of batchResults) {
+        if (settledResult.status === 'fulfilled') {
+          results.set(settledResult.value.photo.id, settledResult.value.analysis);
+        } else {
+          // Handle failed promise (shouldn't happen with allSettled, but handle it)
+          const photo = batch[batchResults.indexOf(settledResult)];
+          const fallbackAnalysis: PhotoAnalysisResult = {
+            photoId: photo.id,
+            faces: [],
+            overallQualityScore: 0,
+            issues: {
+              closedEyes: 0,
+              poorExpressions: 0,
+              blurryFaces: 0,
+            },
+            recommendation: 'poor',
+          };
+          results.set(photo.id, fallbackAnalysis);
+        }
       }
     }
     
