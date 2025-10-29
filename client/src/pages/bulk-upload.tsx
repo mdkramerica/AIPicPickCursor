@@ -77,6 +77,9 @@ export default function BulkUploadPage() {
     };
   };
 
+  const [uploadCompleted, setUploadCompleted] = useState(false);
+  const [uploadedPhotoCount, setUploadedPhotoCount] = useState(0);
+
   const handleUploadComplete = async (results: any[]) => {
     console.log("🚀 Bulk upload completed", { sessionId, resultCount: results.length });
     
@@ -90,23 +93,39 @@ export default function BulkUploadPage() {
     }
     
     const successCount = results.filter(r => r.success).length;
+    setUploadedPhotoCount(successCount);
     
     toast({
       title: "Upload complete",
       description: `Successfully uploaded ${successCount} of ${results.length} photos`,
     });
     
-    // Only start grouping if we have successful uploads
+    // Don't auto-start grouping - let user click "Analyze Photos" button
+    setUploadCompleted(true);
+    
+    // Only show error if no successful uploads
     if (successCount === 0) {
       toast({
         title: "No successful uploads",
         description: "Please check your files and try again",
         variant: "destructive",
       });
+      setUploadCompleted(false);
+      return;
+    }
+  };
+
+  const handleAnalyzeClick = async () => {
+    if (!sessionId) {
+      toast({
+        title: "No session available",
+        description: "Please refresh and try again",
+        variant: "destructive",
+      });
       return;
     }
     
-    console.log("🔍 Starting grouping analysis", { sessionId, photoCount: successCount });
+    console.log("🔍 Starting grouping analysis", { sessionId, photoCount: uploadedPhotoCount });
 
     // 0. VERIFY PHOTOS ARE SAVED - Add a small delay and verify photo count
     console.log("⏳ Waiting for photos to be fully saved...");
@@ -124,7 +143,7 @@ export default function BulkUploadPage() {
         console.log("📊 Photo verification", {
           sessionId,
           actualPhotoCount,
-          expectedCount: successCount,
+          expectedCount: uploadedPhotoCount,
           responseFormat: responseData.data ? 'paginated' : 'array'
         });
 
@@ -141,7 +160,7 @@ export default function BulkUploadPage() {
             console.log("📊 Photo verification (retry)", {
               sessionId,
               actualPhotoCount,
-              expectedCount: successCount
+              expectedCount: uploadedPhotoCount
             });
           }
         }
@@ -215,7 +234,7 @@ export default function BulkUploadPage() {
       
       toast({
         title: "AI grouping started",
-        description: `Analyzing ${successCount} photos to find similar groups...`,
+        description: `Analyzing ${uploadedPhotoCount} photos to find similar groups...`,
       });
       
       // Navigate to results after a short delay
@@ -392,6 +411,8 @@ export default function BulkUploadPage() {
                 onUploadProgress={handleUploadProgress}
                 onUploadComplete={handleUploadComplete}
                 onError={handleError}
+                onAnalyzeClick={handleAnalyzeClick}
+                showAnalyzeButton={uploadCompleted && uploadedPhotoCount >= 2}
               />
             </CardContent>
           </Card>

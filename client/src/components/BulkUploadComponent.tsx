@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import { CloudUpload, X, Check, AlertCircle, Loader2, Image as ImageIcon } from "lucide-react";
+import { CloudUpload, X, Check, AlertCircle, Loader2, Image as ImageIcon, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -31,6 +31,8 @@ export interface BulkUploadProps {
   onUploadProgress: (progress: UploadProgress) => void;
   onUploadComplete: (results: UploadResult[]) => void;
   onError: (error: string) => void;
+  onAnalyzeClick?: () => void; // Optional callback for analyze button
+  showAnalyzeButton?: boolean; // Whether to show analyze button after upload
 }
 
 interface QueuedFile {
@@ -50,12 +52,15 @@ export default function BulkUploadComponent({
   sessionId,
   onUploadProgress,
   onUploadComplete,
-  onError
+  onError,
+  onAnalyzeClick,
+  showAnalyzeButton = false
 }: BulkUploadProps) {
   const { getToken } = useKindeAuth();
   const [files, setFiles] = useState<QueuedFile[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadCompleted, setUploadCompleted] = useState(false);
   const [uploadStartTime, setUploadStartTime] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dragCounter = useRef(0);
@@ -376,7 +381,19 @@ export default function BulkUploadComponent({
     }
 
     setIsUploading(false);
+    setUploadCompleted(true);
     onUploadComplete(results);
+  };
+
+  const handleAnalyzeClick = () => {
+    if (onAnalyzeClick) {
+      onAnalyzeClick();
+    }
+  };
+
+  const handleAddMoreFiles = () => {
+    setUploadCompleted(false);
+    setFiles([]);
   };
 
   const formatTimeRemaining = (ms: number): string => {
@@ -446,27 +463,48 @@ export default function BulkUploadComponent({
                 </p>
               </div>
               <div className="flex gap-2">
-                {!isUploading && (
-                  <Button variant="outline" size="sm" onClick={() => setFiles([])}>
-                    Clear All
-                  </Button>
+                {uploadCompleted && showAnalyzeButton ? (
+                  <>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={handleAddMoreFiles}
+                    >
+                      Add More Photos
+                    </Button>
+                    <Button 
+                      onClick={handleAnalyzeClick}
+                      className="bg-primary"
+                    >
+                      <Sparkles className="mr-2 h-4 w-4" />
+                      Analyze Photos
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    {!isUploading && files.length > 0 && (
+                      <Button variant="outline" size="sm" onClick={() => setFiles([])}>
+                        Clear All
+                      </Button>
+                    )}
+                    <Button 
+                      onClick={uploadFiles}
+                      disabled={isUploading || files.length === 0}
+                    >
+                      {isUploading ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Uploading...
+                        </>
+                      ) : (
+                        <>
+                          <CloudUpload className="mr-2 h-4 w-4" />
+                          Upload {files.length} Files
+                        </>
+                      )}
+                    </Button>
+                  </>
                 )}
-                <Button 
-                  onClick={uploadFiles}
-                  disabled={isUploading || files.length === 0}
-                >
-                  {isUploading ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Uploading...
-                    </>
-                  ) : (
-                    <>
-                      <CloudUpload className="mr-2 h-4 w-4" />
-                      Upload {files.length} Files
-                    </>
-                  )}
-                </Button>
               </div>
             </div>
 
