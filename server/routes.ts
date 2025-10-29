@@ -4,6 +4,8 @@ import { createServer, type Server } from "http";
 import multer from "multer";
 import heicConvert from 'heic-convert';
 import { storage } from "./storage";
+import { db } from "./db";
+import { photoSessions, photos } from "@shared/schema";
 import { setupAuth, isAuthenticated, syncUserToDatabase } from "./kindeAuth";
 import {
   R2StorageService,
@@ -20,6 +22,7 @@ import { asyncHandler, AppError } from "./middleware/errorHandler";
 import { logger } from "./middleware/logger";
 import { authLimiter, analysisLimiter, uploadLimiter, apiLimiter } from "./middleware/rateLimiter";
 import { validateUUID } from "./middleware/security";
+import { eq, and, desc, sql } from "drizzle-orm";
 
 // Configure multer for file uploads (store in memory)
 const upload = multer({
@@ -32,6 +35,45 @@ const upload = multer({
 export async function registerRoutes(app: Express): Promise<Server> {
   // Setup Kinde authentication middleware
   setupAuth(app);
+
+  // Health check endpoint (no auth required, for monitoring)
+  app.get("/health", asyncHandler(async (req, res) => {
+    const checks: Record<string, any> = {
+      status: "ok",
+      timestamp: new Date().toISOString(),
+      uptime: Math.round(process.uptime()),
+      memory: {
+        used: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
+        total: Math.round(process.memoryUsage().heapTotal / 1024 / 1024),
+        rss: Math.round(process.memoryUsage().rss / 1024 / 1024),
+      },
+    };
+
+    // Check database connectivity
+    try {
+      await db.execute(sql`SELECT 1`);
+      checks.database = "ok";
+    } catch (error) {
+      checks.database = "error";
+      checks.databaseError = error instanceof Error ? error.message : "Unknown error";
+    }
+
+    // Check R2 storage connectivity (just verify config exists)
+    try {
+      if (process.env.R2_ENDPOINT && process.env.R2_ACCESS_KEY_ID && process.env.R2_BUCKET_NAME) {
+        checks.storage = "ok";
+      } else {
+        checks.storage = "error";
+        checks.storageError = "R2 configuration missing";
+      }
+    } catch (error) {
+      checks.storage = "error";
+      checks.storageError = error instanceof Error ? error.message : "Unknown error";
+    }
+
+    const healthy = checks.database === "ok" && checks.storage === "ok";
+    res.status(healthy ? 200 : 503).json(checks);
+  }));
 
   // Auth routes
   app.get('/api/auth/user', apiLimiter, isAuthenticated, asyncHandler(async (req: any, res) => {
@@ -351,8 +393,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Photo Session routes
   app.get("/api/sessions", apiLimiter, isAuthenticated, asyncHandler(async (req: any, res) => {
     const userId = req.userId;
-    const sessions = await storage.getSessionsByUser(userId);
-    res.json(sessions);
+    
+    // Parse pagination parameters
+    const page = Math.max(1, parseInt(req.query.page as string) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 20));
+    const offset = (page - 1) * limit;
+    
+    // Get paginated sessions and total count
+    const [sessions, total] = await Promise.all([
+      storage.getSessionsByUserPaginated(userId, { limit, offset }),
+      storage.countSessionsByUser(userId),
+    ]);
+    
+    res.json({
+      data: sessions,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    });
   }));
 
   app.post("/api/sessions", apiLimiter, isAuthenticated, asyncHandler(async (req: any, res) => {
@@ -382,26 +443,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
   }));
 
   // Photo routes
-  app.get("/api/sessions/:sessionId/photos", isAuthenticated, async (req: any, res) => {
-    try {
-      const userId = req.userId;
-      const session = await storage.getSession(req.params.sessionId);
+  app.get("/api/sessions/:sessionId/photos", apiLimiter, isAuthenticated, validateUUID("sessionId"), asyncHandler(async (req: any, res) => {
+    const userId = req.userId;
+    const session = await storage.getSession(req.params.sessionId);
 
-      if (!session) {
-        return res.status(404).json({ message: "Session not found" });
-      }
-
-      if (session.userId !== userId) {
-        return res.status(403).json({ message: "Forbidden" });
-      }
-
-      const photos = await storage.getPhotosBySession(req.params.sessionId);
-      res.json(photos);
-    } catch (error) {
-      console.error("Error fetching photos:", error);
-      res.status(500).json({ message: "Failed to fetch photos" });
+    if (!session) {
+      throw new AppError(404, "Session not found");
     }
-  });
+
+    if (session.userId !== userId) {
+      throw new AppError(403, "Forbidden");
+    }
+
+    // Parse pagination parameters
+    const page = Math.max(1, parseInt(req.query.page as string) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 20));
+    const offset = (page - 1) * limit;
+    
+    // Get paginated photos and total count
+    const [photos, total] = await Promise.all([
+      storage.getPhotosBySessionPaginated(req.params.sessionId, { limit, offset }),
+      storage.countPhotosBySession(req.params.sessionId),
+    ]);
+    
+    res.json({
+      data: photos,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    });
+  }));
 
   // Get presigned URLs for session photos (for displaying images without auth)
   app.get("/api/sessions/:sessionId/photos/presigned-urls", apiLimiter, isAuthenticated, validateUUID("sessionId"), asyncHandler(async (req: any, res) => {
@@ -461,51 +535,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ photos: photosWithPresignedUrls });
   }));
 
-  app.post("/api/sessions/:sessionId/photos", isAuthenticated, async (req: any, res) => {
-    try {
-      const userId = req.userId;
-      const session = await storage.getSession(req.params.sessionId);
-      
-      if (!session) {
-        return res.status(404).json({ message: "Session not found" });
-      }
-      
-      if (session.userId !== userId) {
-        return res.status(403).json({ message: "Forbidden" });
-      }
-
-      // Normalize the object path and set ACL policy
-      const r2Storage = new R2StorageService();
-      const normalizedPath = r2Storage.normalizeObjectPath(req.body.fileUrl);
-
-      // For R2, we'll use the object key directly as the permanent path
-      // The object is already in R2, we just normalize the path
-      const permanentPath = normalizedPath.startsWith("/objects/")
-        ? normalizedPath
-        : `/objects/${req.body.fileUrl}`;
-
-      const photos = await storage.getPhotosBySession(req.params.sessionId);
-      
-      const validatedData = insertPhotoSchema.parse({
-        sessionId: req.params.sessionId,
-        fileUrl: permanentPath, // Store permanent /objects/... path, not temporary signed URL
-        originalFilename: req.body.originalFilename,
-        uploadOrder: photos.length,
-      });
-      
-      const photo = await storage.createPhoto(validatedData);
-      
-      // Update session photo count
-      await storage.updateSession(req.params.sessionId, {
-        photoCount: photos.length + 1,
-      });
-      
-      res.json(photo);
-    } catch (error) {
-      console.error("Error creating photo:", error);
-      res.status(500).json({ message: "Failed to create photo" });
+  app.post("/api/sessions/:sessionId/photos", apiLimiter, isAuthenticated, validateUUID("sessionId"), asyncHandler(async (req: any, res) => {
+    const userId = req.userId;
+    const session = await storage.getSession(req.params.sessionId);
+    
+    if (!session) {
+      throw new AppError(404, "Session not found");
     }
-  });
+    
+    if (session.userId !== userId) {
+      throw new AppError(403, "Forbidden");
+    }
+
+    // Normalize the object path and set ACL policy
+    const r2Storage = new R2StorageService();
+    const normalizedPath = r2Storage.normalizeObjectPath(req.body.fileUrl);
+
+    // For R2, we'll use the object key directly as the permanent path
+    // The object is already in R2, we just normalize the path
+    const permanentPath = normalizedPath.startsWith("/objects/")
+      ? normalizedPath
+      : `/objects/${req.body.fileUrl}`;
+
+    const photos = await storage.getPhotosBySession(req.params.sessionId);
+    
+    const validatedData = insertPhotoSchema.parse({
+      sessionId: req.params.sessionId,
+      fileUrl: permanentPath, // Store permanent /objects/... path, not temporary signed URL
+      originalFilename: req.body.originalFilename,
+      uploadOrder: photos.length,
+    });
+    
+    const photo = await storage.createPhoto(validatedData);
+    
+    // Update session photo count
+    await storage.updateSession(req.params.sessionId, {
+      photoCount: photos.length + 1,
+    });
+    
+    res.json(photo);
+  }));
 
   // Photo Analysis routes
 
@@ -566,62 +635,57 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Preview face detection (quick detection before full analysis)
-  app.post("/api/sessions/:sessionId/preview", isAuthenticated, async (req: any, res) => {
-    try {
-      const userId = req.userId;
-      const session = await storage.getSession(req.params.sessionId);
-      
-      if (!session) {
-        return res.status(404).json({ message: "Session not found" });
-      }
-      
-      if (session.userId !== userId) {
-        return res.status(403).json({ message: "Forbidden" });
-      }
-
-      const photos = await storage.getPhotosBySession(req.params.sessionId);
-      
-      if (photos.length === 0) {
-        return res.status(400).json({ message: "No photos to preview" });
-      }
-
-      // Quick face detection on all photos
-      const detectionResults = await Promise.all(
-        photos.map(photo => photoAnalysisService.detectFaces(photo.fileUrl, photo.id))
-      );
-
-      res.json({
-        sessionId: req.params.sessionId,
-        detections: detectionResults,
-      });
-    } catch (error) {
-      console.error("Error previewing faces:", error);
-      res.status(500).json({ message: "Failed to detect faces" });
+  app.post("/api/sessions/:sessionId/preview", apiLimiter, isAuthenticated, validateUUID("sessionId"), asyncHandler(async (req: any, res) => {
+    const userId = req.userId;
+    const session = await storage.getSession(req.params.sessionId);
+    
+    if (!session) {
+      throw new AppError(404, "Session not found");
     }
-  });
+    
+    if (session.userId !== userId) {
+      throw new AppError(403, "Forbidden");
+    }
 
-  app.post("/api/sessions/:sessionId/analyze", isAuthenticated, async (req: any, res) => {
+    const photos = await storage.getPhotosBySession(req.params.sessionId);
+    
+    if (photos.length === 0) {
+      throw new AppError(400, "No photos to preview");
+    }
+
+    // Quick face detection on all photos
+    const detectionResults = await Promise.all(
+      photos.map(photo => photoAnalysisService.detectFaces(photo.fileUrl, photo.id))
+    );
+
+    res.json({
+      sessionId: req.params.sessionId,
+      detections: detectionResults,
+    });
+  }));
+
+  app.post("/api/sessions/:sessionId/analyze", analysisLimiter, isAuthenticated, validateUUID("sessionId"), asyncHandler(async (req: any, res) => {
+    const userId = req.userId;
+    const session = await storage.getSession(req.params.sessionId);
+    
+    if (!session) {
+      throw new AppError(404, "Session not found");
+    }
+    
+    if (session.userId !== userId) {
+      throw new AppError(403, "Forbidden");
+    }
+
+    const photos = await storage.getPhotosBySession(req.params.sessionId);
+    
+    if (photos.length < 2) {
+      throw new AppError(400, "Need at least 2 photos to analyze");
+    }
+
+    // Get face selections from request body (optional)
+    const faceSelections = req.body.faceSelections as Record<string, Record<number, boolean>> | undefined;
+
     try {
-      const userId = req.userId;
-      const session = await storage.getSession(req.params.sessionId);
-      
-      if (!session) {
-        return res.status(404).json({ message: "Session not found" });
-      }
-      
-      if (session.userId !== userId) {
-        return res.status(403).json({ message: "Forbidden" });
-      }
-
-      const photos = await storage.getPhotosBySession(req.params.sessionId);
-      
-      if (photos.length < 2) {
-        return res.status(400).json({ message: "Need at least 2 photos to analyze" });
-      }
-
-      // Get face selections from request body (optional)
-      const faceSelections = req.body.faceSelections as Record<string, Record<number, boolean>> | undefined;
-
       // Update session status to analyzing
       await storage.updateSession(req.params.sessionId, {
         status: "analyzing",
@@ -684,132 +748,124 @@ export async function registerRoutes(app: Express): Promise<Server> {
         analyses,
       });
     } catch (error) {
-      console.error("Error analyzing session:", error);
-      console.error("Error stack:", error instanceof Error ? error.stack : "No stack trace");
-      console.error("Error details:", {
-        name: error instanceof Error ? error.name : "Unknown",
-        message: error instanceof Error ? error.message : String(error),
-      });
-      
+      // Update session status to failed on error
       await storage.updateSession(req.params.sessionId, {
         status: "failed",
+      }).catch(() => {
+        // Ignore errors updating status
       });
       
-      // Return more specific error message for debugging
-      const errorMessage = error instanceof Error ? error.message : "Failed to analyze photos";
-      res.status(500).json({ 
-        message: "Failed to analyze photos",
-        error: errorMessage,
-        details: "Check server logs for more information"
-      });
+      // Re-throw to be handled by asyncHandler
+      throw error;
     }
-  });
+  }));
 
   // Album routes
-  app.get("/api/album", isAuthenticated, async (req: any, res) => {
-    try {
-      const userId = req.userId;
-      const sessions = await storage.getSessionsByUser(userId);
-      
-      // Get best photos for each session
-      const albumData = await Promise.all(
-        sessions.map(async (session) => {
-          const photos = await storage.getPhotosBySession(session.id);
-          const bestPhoto = photos.find(p => p.isSelectedBest);
-          return {
-            session,
-            bestPhoto: bestPhoto || null,
-          };
-        })
-      );
-      
-      // Filter out sessions without best photos and sort by date (newest first)
-      const filteredAlbum = albumData
-        .filter(item => item.bestPhoto !== null)
-        .sort((a, b) => new Date(b.session.createdAt).getTime() - new Date(a.session.createdAt).getTime());
-      
-      res.json(filteredAlbum);
-    } catch (error) {
-      console.error("Error fetching album:", error);
-      res.status(500).json({ message: "Failed to fetch album" });
-    }
-  });
+  app.get("/api/album", apiLimiter, isAuthenticated, asyncHandler(async (req: any, res) => {
+    const userId = req.userId;
+    
+    // Single query with JOIN - eliminates N+1 query problem
+    // Gets all sessions with their best photos in one query instead of 1 + N queries
+    const albumData = await db
+      .select({
+        session: photoSessions,
+        photo: photos,
+      })
+      .from(photoSessions)
+      .leftJoin(photos, and(
+        eq(photos.sessionId, photoSessions.id),
+        eq(photos.isSelectedBest, true)
+      ))
+      .where(eq(photoSessions.userId, userId))
+      .orderBy(desc(photoSessions.createdAt));
+    
+    // Group results by session (JOIN returns multiple rows per session if multiple best photos exist)
+    const grouped = albumData.reduce((acc, row) => {
+      if (!acc[row.session.id]) {
+        acc[row.session.id] = {
+          session: row.session,
+          bestPhoto: null,
+        };
+      }
+      // Take the first best photo if multiple exist (shouldn't happen, but handle gracefully)
+      if (row.photo && !acc[row.session.id].bestPhoto) {
+        acc[row.session.id].bestPhoto = row.photo;
+      }
+      return acc;
+    }, {} as Record<string, { session: typeof photoSessions.$inferSelect; bestPhoto: typeof photos.$inferSelect | null }>);
+    
+    // Filter out sessions without best photos and convert to array
+    const filteredAlbum = Object.values(grouped)
+      .filter(item => item.bestPhoto !== null);
+    
+    res.json(filteredAlbum);
+  }));
 
-  app.patch("/api/photos/:photoId/mark-best", isAuthenticated, async (req: any, res) => {
-    try {
-      const userId = req.userId;
-      const photo = await storage.getPhoto(req.params.photoId);
-      
-      if (!photo) {
-        return res.status(404).json({ message: "Photo not found" });
-      }
-      
-      const session = await storage.getSession(photo.sessionId);
-      if (!session || session.userId !== userId) {
-        return res.status(403).json({ message: "Forbidden" });
-      }
-      
-      // Unmark all other photos in the session
-      const sessionPhotos = await storage.getPhotosBySession(photo.sessionId);
-      await Promise.all(
-        sessionPhotos.map(p => 
-          storage.updatePhoto(p.id, { isSelectedBest: false })
-        )
-      );
-      
-      // Mark this photo as best
-      await storage.updatePhoto(req.params.photoId, { isSelectedBest: true });
-      
-      // Update session's best photo ID
-      await storage.updateSession(photo.sessionId, {
-        bestPhotoId: req.params.photoId,
-      });
-      
-      res.json({ success: true });
-    } catch (error) {
-      console.error("Error marking photo as best:", error);
-      res.status(500).json({ message: "Failed to mark photo as best" });
+  app.patch("/api/photos/:photoId/mark-best", apiLimiter, isAuthenticated, validateUUID("photoId"), asyncHandler(async (req: any, res) => {
+    const userId = req.userId;
+    const photo = await storage.getPhoto(req.params.photoId);
+    
+    if (!photo) {
+      throw new AppError(404, "Photo not found");
     }
-  });
+    
+    const session = await storage.getSession(photo.sessionId);
+    if (!session || session.userId !== userId) {
+      throw new AppError(403, "Forbidden");
+    }
+    
+    // Unmark all other photos in the session
+    const sessionPhotos = await storage.getPhotosBySession(photo.sessionId);
+    await Promise.all(
+      sessionPhotos.map(p => 
+        storage.updatePhoto(p.id, { isSelectedBest: false })
+      )
+    );
+    
+    // Mark this photo as best
+    await storage.updatePhoto(req.params.photoId, { isSelectedBest: true });
+    
+    // Update session's best photo ID
+    await storage.updateSession(photo.sessionId, {
+      bestPhotoId: req.params.photoId,
+    });
+    
+    res.json({ success: true });
+  }));
 
-  app.delete("/api/photos/:photoId", isAuthenticated, async (req: any, res) => {
-    try {
-      const userId = req.userId;
-      const photo = await storage.getPhoto(req.params.photoId);
-      
-      if (!photo) {
-        return res.status(404).json({ message: "Photo not found" });
-      }
-      
-      const session = await storage.getSession(photo.sessionId);
-      if (!session || session.userId !== userId) {
-        return res.status(403).json({ message: "Forbidden" });
-      }
-      
-      const wasBest = photo.isSelectedBest;
-      
-      // Delete the photo
-      await storage.deletePhoto(req.params.photoId);
-      
-      // Update session photo count
-      const remainingPhotos = await storage.getPhotosBySession(photo.sessionId);
-      await storage.updateSession(photo.sessionId, {
-        photoCount: remainingPhotos.length,
-      });
-      
-      // If this was the best photo, clear the best photo ID
-      if (wasBest) {
-        await storage.updateSession(photo.sessionId, {
-          bestPhotoId: null,
-        });
-      }
-      
-      res.json({ success: true });
-    } catch (error) {
-      console.error("Error deleting photo:", error);
-      res.status(500).json({ message: "Failed to delete photo" });
+  app.delete("/api/photos/:photoId", apiLimiter, isAuthenticated, validateUUID("photoId"), asyncHandler(async (req: any, res) => {
+    const userId = req.userId;
+    const photo = await storage.getPhoto(req.params.photoId);
+    
+    if (!photo) {
+      throw new AppError(404, "Photo not found");
     }
-  });
+    
+    const session = await storage.getSession(photo.sessionId);
+    if (!session || session.userId !== userId) {
+      throw new AppError(403, "Forbidden");
+    }
+    
+    const wasBest = photo.isSelectedBest;
+    
+    // Delete the photo
+    await storage.deletePhoto(req.params.photoId);
+    
+    // Update session photo count
+    const remainingPhotos = await storage.getPhotosBySession(photo.sessionId);
+    await storage.updateSession(photo.sessionId, {
+      photoCount: remainingPhotos.length,
+    });
+    
+    // If this was the best photo, clear the best photo ID
+    if (wasBest) {
+      await storage.updateSession(photo.sessionId, {
+        bestPhotoId: null,
+      });
+    }
+    
+    res.json({ success: true });
+  }));
 
   // Photo Grouping API Routes
 

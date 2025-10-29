@@ -39,16 +39,50 @@ export default function Dashboard() {
   const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const [presignedUrls, setPresignedUrls] = useState<Record<string, string>>({});
 
-  // Fetch sessions
-  const { data: sessions, isLoading: sessionsLoading } = useQuery<PhotoSession[]>({
-    queryKey: ["/api/sessions"],
-  });
+  // Pagination state for sessions
+  const [sessionsPage, setSessionsPage] = useState(1);
+  const sessionsLimit = 20;
 
-  // Fetch photos for selected session
-  const { data: photos, isLoading: photosLoading } = useQuery<Photo[]>({
-    queryKey: ["/api/sessions", selectedSession, "photos"],
-    enabled: !!selectedSession,
+  // Fetch sessions (paginated)
+  const { data: sessionsResponse, isLoading: sessionsLoading } = useQuery<{
+    data: PhotoSession[];
+    pagination: {
+      page: number;
+      limit: number;
+      total: number;
+      totalPages: number;
+    };
+  }>({
+    queryKey: ["/api/sessions", sessionsPage, sessionsLimit],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/sessions?page=${sessionsPage}&limit=${sessionsLimit}`);
+      return await res.json();
+    },
   });
+  const sessions = sessionsResponse?.data || [];
+
+  // Pagination state for photos
+  const [photosPage, setPhotosPage] = useState(1);
+  const photosLimit = 20;
+
+  // Fetch photos for selected session (paginated)
+  const { data: photosResponse, isLoading: photosLoading } = useQuery<{
+    data: Photo[];
+    pagination: {
+      page: number;
+      limit: number;
+      total: number;
+      totalPages: number;
+    };
+  }>({
+    queryKey: ["/api/sessions", selectedSession, "photos", photosPage, photosLimit],
+    enabled: !!selectedSession,
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/sessions/${selectedSession}/photos?page=${photosPage}&limit=${photosLimit}`);
+      return await res.json();
+    },
+  });
+  const photos = photosResponse?.data || [];
 
   // Fetch presigned URLs for all photos in selected session
   const { data: presignedData, isLoading: presignedLoading, error: presignedError } = useQuery<{
@@ -109,6 +143,7 @@ export default function Dashboard() {
     onSuccess: (data: PhotoSession) => {
       queryClient.invalidateQueries({ queryKey: ["/api/sessions"] });
       setSelectedSession(data.id);
+      setSessionsPage(1); // Reset to first page
     },
     onError: (error: Error) => {
       if (isUnauthorizedError(error)) {
@@ -145,6 +180,7 @@ export default function Dashboard() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/sessions", selectedSession, "photos"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sessions"] });
+      setPhotosPage(1); // Reset to first page
       toast({
         title: "Success",
         description: "Photos uploaded successfully",

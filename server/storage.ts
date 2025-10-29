@@ -27,7 +27,7 @@ import {
   type BulkSessionOptions,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, and, isNull } from "drizzle-orm";
+import { eq, desc, and, isNull, count } from "drizzle-orm";
 
 export interface IStorage {
   // User operations (Required for Replit Auth)
@@ -36,6 +36,8 @@ export interface IStorage {
   
   // Photo Session operations
   getSessionsByUser(userId: string): Promise<PhotoSession[]>;
+  getSessionsByUserPaginated(userId: string, options?: { limit?: number; offset?: number }): Promise<PhotoSession[]>;
+  countSessionsByUser(userId: string): Promise<number>;
   getSession(id: string): Promise<PhotoSession | undefined>;
   createSession(session: InsertPhotoSession): Promise<PhotoSession>;
   updateSession(id: string, data: Partial<PhotoSession>): Promise<PhotoSession | undefined>;
@@ -43,6 +45,8 @@ export interface IStorage {
   
   // Photo operations
   getPhotosBySession(sessionId: string): Promise<Photo[]>;
+  getPhotosBySessionPaginated(sessionId: string, options?: { limit?: number; offset?: number }): Promise<Photo[]>;
+  countPhotosBySession(sessionId: string): Promise<number>;
   getPhoto(id: string): Promise<Photo | undefined>;
   createPhoto(photo: InsertPhoto): Promise<Photo>;
   updatePhoto(id: string, data: Partial<Photo>): Promise<Photo | undefined>;
@@ -108,6 +112,28 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(photoSessions.createdAt));
   }
 
+  async getSessionsByUserPaginated(userId: string, options?: { limit?: number; offset?: number }): Promise<PhotoSession[]> {
+    const limit = options?.limit ?? 20;
+    const offset = options?.offset ?? 0;
+    
+    return await db
+      .select()
+      .from(photoSessions)
+      .where(eq(photoSessions.userId, userId))
+      .orderBy(desc(photoSessions.createdAt))
+      .limit(limit)
+      .offset(offset);
+  }
+
+  async countSessionsByUser(userId: string): Promise<number> {
+    const [result] = await db
+      .select({ count: count() })
+      .from(photoSessions)
+      .where(eq(photoSessions.userId, userId));
+    
+    return result?.count ?? 0;
+  }
+
   async getSession(id: string): Promise<PhotoSession | undefined> {
     const [session] = await db
       .select()
@@ -140,6 +166,28 @@ export class DatabaseStorage implements IStorage {
       .from(photos)
       .where(eq(photos.sessionId, sessionId))
       .orderBy(photos.uploadOrder);
+  }
+
+  async getPhotosBySessionPaginated(sessionId: string, options?: { limit?: number; offset?: number }): Promise<Photo[]> {
+    const limit = options?.limit ?? 20;
+    const offset = options?.offset ?? 0;
+    
+    return await db
+      .select()
+      .from(photos)
+      .where(eq(photos.sessionId, sessionId))
+      .orderBy(photos.uploadOrder)
+      .limit(limit)
+      .offset(offset);
+  }
+
+  async countPhotosBySession(sessionId: string): Promise<number> {
+    const [result] = await db
+      .select({ count: count() })
+      .from(photos)
+      .where(eq(photos.sessionId, sessionId));
+    
+    return result?.count ?? 0;
   }
 
   async getPhoto(id: string): Promise<Photo | undefined> {
