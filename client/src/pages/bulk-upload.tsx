@@ -166,7 +166,17 @@ export default function BulkUploadPage() {
 
         // Verify again after waiting
         console.log("🔍 Retrying photo verification...");
-        const retryResponse = await apiRequest("GET", `/api/sessions/${sessionId}/photos?limit=1000`);
+        
+        // Add timeout to retry as well
+        const retryTimeoutPromise = new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error("Photo verification retry timed out after 10 seconds")), 10000);
+        });
+        
+        const retryResponse = await Promise.race([
+          apiRequest("GET", `/api/sessions/${sessionId}/photos?limit=1000`),
+          retryTimeoutPromise
+        ]);
+        
         // apiRequest throws if response is not ok, so if we get here, response is ok
         const retryData = await retryResponse.json();
         const retryPhotos = retryData.data || (Array.isArray(retryData) ? retryData : []);
