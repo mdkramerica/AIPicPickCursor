@@ -59,6 +59,13 @@ export default function Dashboard() {
       const res = await apiRequest("GET", `/api/sessions?page=${sessionsPage}&limit=${sessionsLimit}`);
       return await res.json();
     },
+    // Refetch more frequently if any session is in "analyzing" status
+    refetchInterval: (data) => {
+      if (data?.data?.some((session: PhotoSession) => session.status === 'analyzing')) {
+        return 3000; // Poll every 3 seconds if analyzing
+      }
+      return false; // Don't auto-refetch otherwise
+    },
   });
   const sessions = sessionsResponse?.data || [];
   

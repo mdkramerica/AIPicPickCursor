@@ -399,10 +399,10 @@ export default function BulkUploadPage() {
         description: "Your photos have been analyzed! You can now compare them.",
       });
       
-      // Navigate after a short delay with session ID in URL to auto-select it
+      // Navigate after a longer delay to ensure server has updated session status
       setTimeout(() => {
         navigate(`/?sessionId=${sessionId}`);
-      }, 2000);
+      }, 3000);
     } else if (progressData?.progress?.status === 'error' && isAnalyzing) {
       // Don't immediately mark as failed - check if photos have analysis data
       // Sometimes analysis succeeds but status shows error due to grouping failure
