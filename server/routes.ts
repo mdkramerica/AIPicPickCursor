@@ -1369,8 +1369,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
             });
           }
           
-          // Mark the best photo in the group
-          if (bestPhotoId) {
+          // Mark the best photo in the group (ONLY if group has 2+ photos)
+          // Don't mark singletons as "best" - that's meaningless
+          if (bestPhotoId && cluster.photoIds.length >= 2) {
             await storage.updatePhoto(bestPhotoId, { isSelectedBest: true });
             logger.info(`Set best photo for group`, {
               sessionId,
@@ -1378,6 +1379,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
               bestPhotoId,
               qualityScore: bestQualityScore,
               totalPhotosInGroup: cluster.photoIds.length
+            });
+          } else if (cluster.photoIds.length === 1) {
+            logger.info(`Skipping best photo mark for singleton group`, {
+              sessionId,
+              groupId: group.id,
+              photoId: cluster.photoIds[0]
             });
           }
           

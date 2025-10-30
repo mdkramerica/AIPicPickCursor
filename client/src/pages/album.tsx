@@ -66,9 +66,21 @@ export default function Album() {
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
 
   // Fetch album data
-  const { data: album, isLoading } = useQuery<AlbumItem[]>({
+  const { data: album, isLoading, error: albumError } = useQuery<AlbumItem[]>({
     queryKey: ["/api/album"],
   });
+  
+  // Log any errors for debugging
+  useEffect(() => {
+    if (albumError) {
+      console.error('❌ Album loading error:', albumError);
+      toast({
+        title: "Error Loading Album",
+        description: albumError instanceof Error ? albumError.message : "Failed to load album",
+        variant: "destructive",
+      });
+    }
+  }, [albumError, toast]);
 
   // Fetch photos for selected session
   const { data: sessionPhotos } = useQuery<PhotoWithAnalysis[]>({
