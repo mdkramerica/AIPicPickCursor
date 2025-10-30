@@ -132,12 +132,12 @@ export interface GroupingOptions {
 export class PhotoGroupingService {
   private progressEmitter = new EventEmitter();
   private readonly DEFAULT_OPTIONS: Required<GroupingOptions> = {
-    similarityThreshold: 0.35,  // Lower from 0.55 to 0.35 (35%) - very lenient for burst photos
+    similarityThreshold: 0.20,  // VERY LOW - 20% similarity to group (was 35%)
     maxGroupSize: 20,           // Increase from 15 to 20 for larger burst sequences
     minGroupSize: 1,            // Allow singletons (changed from 2)
-    temporalWeight: 0.6,        // Increase from 0.5 to 0.6 (strongly favor temporal clustering)
-    visualWeight: 0.3,          // Decrease from 0.35 to 0.3
-    metadataWeight: 0.1,        // Decrease from 0.15 to 0.1
+    temporalWeight: 0.8,        // HEAVILY favor temporal (80% weight)
+    visualWeight: 0.15,         // Minimal visual weight
+    metadataWeight: 0.05,       // Minimal metadata weight
     batchSize: 10,
   };
 
@@ -449,13 +449,12 @@ export class PhotoGroupingService {
   calculateSimilarity(features1: GroupingFeatures, features2: GroupingFeatures, options: Required<GroupingOptions>): number {
     // Temporal similarity (photos taken close together are more similar)
     const timeDiff = Math.abs(features1.timestamp.getTime() - features2.timestamp.getTime());
-    // Burst photo handling: photos within 120 seconds get high temporal similarity
-    // 120 second decay (increased from 60) to better support burst sequences
-    const temporalSimilarity = Math.exp(-timeDiff / (120 * 1000)); // 120 second decay (2 minutes)
+    // VERY LENIENT: photos within 5 minutes get high temporal similarity
+    const temporalSimilarity = Math.exp(-timeDiff / (300 * 1000)); // 300 second decay (5 minutes!)
     
-    // Burst photo boost: if photos taken within 30 seconds, boost similarity significantly
-    const isBurst = timeDiff < 30000; // 30 seconds (increased from 10)
-    const burstBoost = isBurst ? 0.25 : 0; // Add 25% similarity boost for burst photos (increased from 15%)
+    // Burst photo boost: if photos taken within 2 minutes, boost similarity MASSIVELY
+    const isBurst = timeDiff < 120000; // 2 minutes (was 30 seconds)
+    const burstBoost = isBurst ? 0.40 : 0; // Add 40% similarity boost! (was 25%)
     
     // Visual similarity
     const colorSimilarity = this.calculateHistogramSimilarity(features1.colorHistogram, features2.colorHistogram);
