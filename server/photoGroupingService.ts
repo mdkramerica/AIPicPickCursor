@@ -585,18 +585,42 @@ export class PhotoGroupingService {
         matrix[i][j] = similarity;
         matrix[j][i] = similarity; // Symmetric matrix
         
-        // Log similarity scores for first few photo pairs to diagnose grouping
-        if (i < 5 && j < 5) {
+        // Log similarity scores for more photo pairs to diagnose grouping
+        if (i < 10 && j < 10) {
+          const timeDiff = Math.abs(features[i].timestamp.getTime() - features[j].timestamp.getTime()) / 1000;
           logger.info(`Photo pair similarity`, {
-            photo1: features[i].photoId,
-            photo2: features[j].photoId,
+            photo1Index: i,
+            photo2Index: j,
+            photo1: features[i].photoId.slice(0, 8),
+            photo2: features[j].photoId.slice(0, 8),
             similarity: similarity.toFixed(3),
-            timeDiff: Math.abs(features[i].timestamp.getTime() - features[j].timestamp.getTime()) / 1000,
-            threshold: options.similarityThreshold
+            timeDiffSeconds: timeDiff.toFixed(1),
+            threshold: options.similarityThreshold,
+            willGroup: similarity >= options.similarityThreshold ? 'YES' : 'NO'
           });
         }
       }
     }
+    
+    // Log overall similarity statistics
+    let totalAboveThreshold = 0;
+    let totalPairs = 0;
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
+        totalPairs++;
+        if (matrix[i][j] >= options.similarityThreshold) {
+          totalAboveThreshold++;
+        }
+      }
+    }
+    
+    logger.info('Similarity matrix complete', {
+      totalPhotos: n,
+      totalPairsChecked: totalPairs,
+      pairsAboveThreshold: totalAboveThreshold,
+      percentageAboveThreshold: ((totalAboveThreshold / totalPairs) * 100).toFixed(1) + '%',
+      threshold: options.similarityThreshold
+    });
     
     return {
       matrix,
@@ -1048,8 +1072,8 @@ export class PhotoGroupingService {
       throw new Error('Similarity threshold must be between 0 and 1');
     }
     
-    if (options.minGroupSize < 2) {
-      throw new Error('Minimum group size must be at least 2');
+    if (options.minGroupSize < 1) {
+      throw new Error('Minimum group size must be at least 1 (singletons allowed)');
     }
     
     if (options.maxGroupSize < options.minGroupSize) {
