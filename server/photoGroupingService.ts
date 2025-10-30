@@ -132,12 +132,12 @@ export interface GroupingOptions {
 export class PhotoGroupingService {
   private progressEmitter = new EventEmitter();
   private readonly DEFAULT_OPTIONS: Required<GroupingOptions> = {
-    similarityThreshold: 0.20,  // VERY LOW - 20% similarity to group (was 35%)
+    similarityThreshold: 0.10,  // EXTREMELY LOW - 10% similarity to group (was 20%)
     maxGroupSize: 20,           // Increase from 15 to 20 for larger burst sequences
     minGroupSize: 1,            // Allow singletons (changed from 2)
-    temporalWeight: 0.8,        // HEAVILY favor temporal (80% weight)
-    visualWeight: 0.15,         // Minimal visual weight
-    metadataWeight: 0.05,       // Minimal metadata weight
+    temporalWeight: 0.9,        // ALMOST ENTIRELY temporal (90% weight!)
+    visualWeight: 0.08,         // Tiny visual weight
+    metadataWeight: 0.02,       // Tiny metadata weight
     batchSize: 10,
   };
 
@@ -449,12 +449,25 @@ export class PhotoGroupingService {
   calculateSimilarity(features1: GroupingFeatures, features2: GroupingFeatures, options: Required<GroupingOptions>): number {
     // Temporal similarity (photos taken close together are more similar)
     const timeDiff = Math.abs(features1.timestamp.getTime() - features2.timestamp.getTime());
-    // VERY LENIENT: photos within 5 minutes get high temporal similarity
-    const temporalSimilarity = Math.exp(-timeDiff / (300 * 1000)); // 300 second decay (5 minutes!)
+    const timeDiffSeconds = timeDiff / 1000;
     
-    // Burst photo boost: if photos taken within 2 minutes, boost similarity MASSIVELY
-    const isBurst = timeDiff < 120000; // 2 minutes (was 30 seconds)
-    const burstBoost = isBurst ? 0.40 : 0; // Add 40% similarity boost! (was 25%)
+    // EXTREMELY LENIENT: photos within 10 minutes get high temporal similarity
+    const temporalSimilarity = Math.exp(-timeDiff / (600 * 1000)); // 600 second decay (10 minutes!)
+    
+    // Burst photo boost: if photos taken within 5 minutes, boost similarity MASSIVELY
+    const isBurst = timeDiff < 300000; // 5 minutes (was 2 minutes)
+    const burstBoost = isBurst ? 0.50 : 0; // Add 50% similarity boost! (was 40%)
+    
+    // Log similarity calculation for first few pairs
+    if (Math.random() < 0.05) { // Log 5% of calculations
+      logger.info('Similarity calculation sample', {
+        timeDiffSeconds: timeDiffSeconds.toFixed(1),
+        temporalSimilarity: temporalSimilarity.toFixed(3),
+        isBurst,
+        burstBoost: burstBoost.toFixed(2),
+        temporalWeight: options.temporalWeight
+      });
+    }
     
     // Visual similarity
     const colorSimilarity = this.calculateHistogramSimilarity(features1.colorHistogram, features2.colorHistogram);
@@ -671,22 +684,25 @@ export class PhotoGroupingService {
         }
       }
       
-      // Log iteration details for first few iterations
-      if (iterationCount < 10) {
-        logger.info(`Clustering iteration ${iterationCount}`, {
-          clustersRemaining: clusters.length,
-          maxSimilarity: maxSimilarity.toFixed(3),
-          threshold: options.similarityThreshold,
-          willMerge: maxSimilarity >= options.similarityThreshold
-        });
-      }
+      // Log ALL iterations for debugging (not just first 10)
+      logger.info(`Clustering iteration ${iterationCount}`, {
+        clustersRemaining: clusters.length,
+        maxSimilarity: maxSimilarity.toFixed(3),
+        threshold: options.similarityThreshold,
+        willMerge: maxSimilarity >= options.similarityThreshold,
+        clusterSizes: clusters.map(c => c.length),
+        bestPairIndices: bestPair,
+        bestPairSizes: [clusters[bestPair[0]].length, clusters[bestPair[1]].length]
+      });
       iterationCount++;
       
       // Stop if similarity below threshold
       if (maxSimilarity < options.similarityThreshold) {
-        logger.info(`Clustering stopped: max similarity ${maxSimilarity.toFixed(3)} below threshold ${options.similarityThreshold}`, {
+        logger.warn(`⚠️ Clustering stopped: max similarity ${maxSimilarity.toFixed(3)} below threshold ${options.similarityThreshold}`, {
           finalClusterCount: clusters.length,
-          iterations: iterationCount
+          iterations: iterationCount,
+          finalClusterSizes: clusters.map(c => c.length),
+          suggestion: 'Consider lowering similarityThreshold or increasing temporal weight'
         });
         break;
       }

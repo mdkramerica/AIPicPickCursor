@@ -245,7 +245,7 @@ export default function BulkUploadPage() {
     try {
       // Start analysis/grouping in background (this is a long-running operation)
       const response = await apiRequest("POST", `/api/sessions/${sessionId}/group-analyze`, {
-        similarityThreshold: 0.20,  // VERY LOW - group everything uploaded together (was 0.35)
+        similarityThreshold: 0.10,  // EXTREMELY LOW - 10% similarity (was 0.20)
         targetGroupSize: 5,
         minGroupSize: 1,            // Allow singletons
         maxGroupSize: 20,           // Increased to handle larger burst sequences
