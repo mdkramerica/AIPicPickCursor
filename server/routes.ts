@@ -370,8 +370,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           buffer: fileBuffer,
           format: 'JPEG',
           quality: 0.92
-        });
-        fileBuffer = Buffer.from(outputBuffer);
+        }) as unknown as Buffer;
+        fileBuffer = outputBuffer;
         fileMimetype = 'image/jpeg';
         console.log(`✅ HEIC conversion successful, new size: ${fileBuffer.length} bytes`);
       } catch (conversionError) {
@@ -1420,7 +1420,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
           totalPhotos: createdGroups.reduce((sum, g) => sum + g.photoCount, 0),
           groupsWithBestPhoto: createdGroups.filter(g => g.bestPhotoId).length,
           groupsWithoutBestPhoto: groupsWithoutBestPhoto.length,
-          allBestPhotosHaveQualityScores: bestPhotosWithoutQuality.length === 0
+          allBestPhotosHaveQualityScores: bestPhotosWithoutQuality.length === 0,
+          groupDetails: createdGroups.map(g => ({
+            id: g.id,
+            photoCount: g.photoCount,
+            bestPhotoId: g.bestPhotoId,
+            confidenceScore: g.confidenceScore
+          }))
         });
         
         // Update session status to completed after successful grouping

@@ -245,10 +245,10 @@ export default function BulkUploadPage() {
     try {
       // Start analysis/grouping in background (this is a long-running operation)
       const response = await apiRequest("POST", `/api/sessions/${sessionId}/group-analyze`, {
-        similarityThreshold: 0.55,  // Match server default (lowered for burst photos)
+        similarityThreshold: 0.35,  // Match server default (very lenient for burst photos)
         targetGroupSize: 5,
-        minGroupSize: 2,
-        maxGroupSize: 15,           // Increased to handle larger burst sequences
+        minGroupSize: 1,            // Allow singletons
+        maxGroupSize: 20,           // Increased to handle larger burst sequences
       });
       
       if (!response.ok) {
