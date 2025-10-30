@@ -12,11 +12,12 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-# Copy package files
+# Copy package files FIRST (for better layer caching)
 COPY package*.json ./
 
-# Install ALL dependencies (including devDependencies needed for build)
-RUN npm ci
+# Install dependencies with caching
+# Railway caches this layer if package.json hasn't changed
+RUN npm ci --prefer-offline --no-audit
 
 # Copy application files
 COPY . .
@@ -35,10 +36,11 @@ ENV VITE_KINDE_REDIRECT_URL=$VITE_KINDE_REDIRECT_URL
 ENV VITE_KINDE_LOGOUT_REDIRECT_URL=$VITE_KINDE_LOGOUT_REDIRECT_URL
 
 # Build application (Vite will embed these variables in the bundle)
-RUN npm run build
+# Use fewer workers to reduce memory usage during build
+RUN NODE_OPTIONS="--max-old-space-size=2048" npm run build
 
 # Prune devDependencies after build to reduce image size
-RUN npm prune --production
+RUN npm prune --production --prefer-offline
 
 # Expose port
 EXPOSE 5000
