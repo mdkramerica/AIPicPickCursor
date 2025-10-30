@@ -614,6 +614,13 @@ export class PhotoGroupingService {
     // Initialize each photo as its own cluster
     let clusters: number[][] = Array(n).fill(null).map((_, i) => [i]);
     
+    logger.info(`Starting hierarchical clustering`, {
+      totalPhotos: n,
+      initialClusters: clusters.length,
+      threshold: options.similarityThreshold
+    });
+    
+    let iterationCount = 0;
     while (clusters.length > 1) {
       // Find most similar cluster pair
       let maxSimilarity = -1;
@@ -641,8 +648,25 @@ export class PhotoGroupingService {
         }
       }
       
+      // Log iteration details for first few iterations
+      if (iterationCount < 10) {
+        logger.info(`Clustering iteration ${iterationCount}`, {
+          clustersRemaining: clusters.length,
+          maxSimilarity: maxSimilarity.toFixed(3),
+          threshold: options.similarityThreshold,
+          willMerge: maxSimilarity >= options.similarityThreshold
+        });
+      }
+      iterationCount++;
+      
       // Stop if similarity below threshold
-      if (maxSimilarity < options.similarityThreshold) break;
+      if (maxSimilarity < options.similarityThreshold) {
+        logger.info(`Clustering stopped: max similarity ${maxSimilarity.toFixed(3)} below threshold ${options.similarityThreshold}`, {
+          finalClusterCount: clusters.length,
+          iterations: iterationCount
+        });
+        break;
+      }
       
       // Merge the two most similar clusters
       const [i, j] = bestPair;
@@ -659,11 +683,19 @@ export class PhotoGroupingService {
     // Convert to PhotoCluster objects
     const photoClusters: PhotoCluster[] = [];
     
+    logger.info(`Converting ${clusters.length} clusters to PhotoCluster objects`, {
+      clusterSizes: clusters.map(c => c.length),
+      minGroupSize: options.minGroupSize
+    });
+    
     for (let i = 0; i < clusters.length; i++) {
       const cluster = clusters[i];
       
       // Skip clusters that are too small
-      if (cluster.length < options.minGroupSize) continue;
+      if (cluster.length < options.minGroupSize) {
+        logger.info(`Skipping cluster ${i} (size ${cluster.length} < minGroupSize ${options.minGroupSize})`);
+        continue;
+      }
       
       const photoIds = cluster.map(idx => similarityMatrix.photoIds[idx]);
       
