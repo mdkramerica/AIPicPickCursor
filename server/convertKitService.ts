@@ -260,7 +260,7 @@ class ConvertKitService {
     return this.makeRequest<ConvertKitBroadcast[]>('/broadcasts');
   }
 
-  // Email Campaigns for AIPicPick
+  // Email Campaigns for GroupSnapAI
   async sendPhotoAnalysisEmail(campaignData: EmailCampaignData): Promise<ConvertKitApiResponse<ConvertKitBroadcast>> {
     logger.info('Sending photo analysis email', {
       sessionId: campaignData.sessionId,
@@ -321,10 +321,10 @@ class ConvertKitService {
 
     const requests: Record<CampaignType, ConvertKitBroadcastRequest> = {
       welcome: {
-        subject: 'Welcome to AIPicPick! 📸',
+        subject: 'Welcome to GroupSnapAI! 📸',
         content: `${baseContent}
 
-Welcome to AIPicPick! We're excited to help you find the perfect photos from your group shots.
+Welcome to GroupSnapAI! We're excited to help you find the perfect photos from your group shots.
 
 Here's what you can do:
 • Upload your group photos
@@ -335,7 +335,7 @@ Here's what you can do:
 Ready to get started? Upload your first photos now!
 
 Best,
-The AIPicPick Team`,
+The GroupSnapAI Team`,
         public: false,
       },
 
@@ -355,7 +355,7 @@ ${analysisResults?.bestPhotoUrl ? `Your best photo is ready for download!` : ''}
 Check out your results and download the perfect shot.
 
 Best,
-The AIPicPick Team`,
+The GroupSnapAI Team`,
         public: false,
       },
 
@@ -371,10 +371,10 @@ Want to take better group photos? Here are our top tips:
 4. **Check Eyes** - Make sure everyone's eyes are open
 5. **Smile Naturally** - Tell a joke instead of saying "cheese"
 
-Remember, AIPicPick is here to help you find the perfect shot from any group photo session!
+Remember, GroupSnapAI is here to help you find the perfect shot from any group photo session!
 
 Best,
-The AIPicPick Team`,
+The GroupSnapAI Team`,
         public: false,
       },
 
@@ -392,15 +392,15 @@ Did you know?
 Have questions or feedback? Just reply to this email - we'd love to hear from you!
 
 Keep capturing those perfect moments,
-The AIPicPick Team`,
+The GroupSnapAI Team`,
         public: false,
       },
 
       newsletter: {
-        subject: 'AIPicPick Updates & New Features ✨',
+        subject: 'GroupSnapAI Updates & New Features ✨',
         content: `${baseContent}
 
-Here's what's new at AIPicPick:
+Here's what's new at GroupSnapAI:
 
 🆕 Latest Features
 • Improved face detection accuracy
@@ -417,10 +417,10 @@ Here's what's new at AIPicPick:
 • Happy users: [Number]
 • Best quality scores achieved: [Number]
 
-Thank you for being part of the AIPicPick community!
+Thank you for being part of the GroupSnapAI community!
 
 Best,
-The AIPicPick Team`,
+The GroupSnapAI Team`,
         public: false,
       },
     };

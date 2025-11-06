@@ -93,7 +93,7 @@ export interface ConvertKitRateLimitInfo {
   limit: number;
 }
 
-// Email Campaign Types for AIPicPick
+// Email Campaign Types for GroupSnapAI
 export type CampaignType = 'analysis_complete' | 'tips' | 'follow_up' | 'newsletter' | 'welcome';
 
 export interface EmailCampaignData {

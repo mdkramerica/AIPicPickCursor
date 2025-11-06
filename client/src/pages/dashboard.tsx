@@ -456,7 +456,7 @@ export default function Dashboard() {
         <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 h-14 sm:h-16 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <Sparkles className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />
-            <span className="text-base sm:text-xl font-semibold">AI Photo Selector</span>
+            <span className="text-base sm:text-xl font-semibold">GroupSnapAI</span>
           </div>
           <div className="flex items-center gap-1 sm:gap-4">
             <Button variant="ghost" size="sm" asChild data-testid="button-album" className="min-h-[44px]">

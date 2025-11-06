@@ -140,7 +140,7 @@ export default function EmailPreferences() {
             Unsubscribe
           </CardTitle>
           <CardDescription>
-            Stop receiving all emails from AIPicPick
+            Stop receiving all emails from GroupSnapAI
           </CardDescription>
         </CardHeader>
         <CardContent>
