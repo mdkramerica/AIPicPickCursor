@@ -96,3 +96,6 @@ If Docker causes issues:
 2. Remove `Dockerfile` or rename it
 3. Railway will auto-detect and use Nixpacks
 
+
+
+

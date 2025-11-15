@@ -116,3 +116,6 @@ Your internet upload speed will always be the limiting factor:
 
 **Start with Phase 1 (Parallel Uploads)** - This gives the biggest performance boost with minimal code changes and low risk.
 
+
+
+
