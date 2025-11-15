@@ -30,10 +30,35 @@ export default function BulkUploadPage() {
         description: "You can now upload your photos",
       });
     },
-    onError: (error) => {
+    onError: (error: Error) => {
+      console.error('❌ Bulk session creation failed:', error);
+      
+      // Parse error message for specific issues
+      const errorMessage = error.message.toLowerCase();
+      let title = "Failed to Create Bulk Session";
+      let description = "An error occurred while creating the bulk session. Please try again.";
+
+      if (errorMessage.includes('database') || errorMessage.includes('connection')) {
+        title = "Database Error";
+        description = "Unable to connect to the database. Please try again in a few moments.";
+      } else if (errorMessage.includes('unauthorized') || errorMessage.includes('token')) {
+        title = "Authentication Error";
+        description = "Your session has expired. Please log in again.";
+        setTimeout(() => {
+          window.location.href = "/api/login";
+        }, 2000);
+        return;
+      } else if (errorMessage.includes('validation') || errorMessage.includes('schema')) {
+        title = "Invalid Data";
+        description = "The session data is invalid. Please refresh the page and try again.";
+      } else if (errorMessage.includes('network') || errorMessage.includes('fetch')) {
+        title = "Network Error";
+        description = "Unable to connect to the server. Please check your internet connection.";
+      }
+
       toast({
-        title: "Failed to create session",
-        description: "Please try again",
+        title,
+        description,
         variant: "destructive",
       });
     },

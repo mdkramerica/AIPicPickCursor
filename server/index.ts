@@ -8,6 +8,25 @@ if (!globalThis.crypto) {
   globalThis.crypto = webcrypto as any;
 }
 
+// Validate required environment variables on startup
+const requiredEnvVars = [
+  'DATABASE_URL',
+  'KINDE_DOMAIN',
+];
+
+const missingEnvVars = requiredEnvVars.filter(envVar => !process.env[envVar]);
+
+if (missingEnvVars.length > 0) {
+  console.error('❌ Missing required environment variables:');
+  missingEnvVars.forEach(envVar => {
+    console.error(`   - ${envVar}`);
+  });
+  console.error('\nPlease check your .env file or environment configuration.');
+  process.exit(1);
+}
+
+console.log('✅ Environment validation passed');
+
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";

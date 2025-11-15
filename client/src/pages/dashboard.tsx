@@ -61,7 +61,7 @@ export default function Dashboard() {
     },
     // Refetch more frequently if any session is in "analyzing" status
     refetchInterval: (data) => {
-      if (data?.data?.some((session: PhotoSession) => session.status === 'analyzing')) {
+      if (data && 'data' in data && Array.isArray(data.data) && data.data.some((session: PhotoSession) => session.status === 'analyzing')) {
         return 3000; // Poll every 3 seconds if analyzing
       }
       return false; // Don't auto-refetch otherwise
@@ -178,15 +178,36 @@ export default function Dashboard() {
   // Create session mutation
   const createSessionMutation = useMutation({
     mutationFn: async () => {
+      console.log('🚀 Creating new session...');
+      
+      // Validate authentication state before making request
+      if (!user) {
+        throw new Error("You must be logged in to create a session");
+      }
+
+      const sessionName = `Session ${new Date().toLocaleString()}`;
+      console.log('📝 Session data:', { name: sessionName, userId: user.id });
+      
       const res = await apiRequest("POST", "/api/sessions", {
-        name: `Session ${new Date().toLocaleString()}`,
+        name: sessionName,
       });
-      return await res.json() as PhotoSession;
+      
+      const sessionData = await res.json() as PhotoSession;
+      console.log('✅ Session created successfully:', sessionData.id);
+      
+      return sessionData;
     },
     onSuccess: (data: PhotoSession) => {
+      console.log('🎉 Session creation successful:', data.id);
+      
       queryClient.invalidateQueries({ queryKey: ["/api/sessions"] });
       setSelectedSession(data.id);
       setSessionsPage(1); // Reset to first page
+      
+      toast({
+        title: "Session Created",
+        description: `"${data.name}" is ready for photo uploads`,
+      });
     },
     onError: (error: Error) => {
       if (isUnauthorizedError(error)) {
@@ -200,9 +221,30 @@ export default function Dashboard() {
         }, 500);
         return;
       }
+      console.error('❌ Session creation failed:', error);
+      
+      // Parse error message for specific issues
+      const errorMessage = error.message.toLowerCase();
+      let title = "Failed to Create Session";
+      let description = "An error occurred while creating the session. Please try again.";
+
+      if (errorMessage.includes('database') || errorMessage.includes('connection')) {
+        title = "Database Error";
+        description = "Unable to connect to the database. Please try again in a few moments.";
+      } else if (errorMessage.includes('validation') || errorMessage.includes('schema')) {
+        title = "Invalid Data";
+        description = "The session data is invalid. Please refresh the page and try again.";
+      } else if (errorMessage.includes('duplicate') || errorMessage.includes('already exists')) {
+        title = "Duplicate Session";
+        description = "A session with this name already exists. Please try again.";
+      } else if (errorMessage.includes('network') || errorMessage.includes('fetch')) {
+        title = "Network Error";
+        description = "Unable to connect to the server. Please check your internet connection.";
+      }
+
       toast({
-        title: "Error",
-        description: "Failed to create session",
+        title,
+        description,
         variant: "destructive",
       });
     },

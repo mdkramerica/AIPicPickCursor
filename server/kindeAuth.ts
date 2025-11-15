@@ -43,32 +43,55 @@ export const isAuthenticated = async (
     // Get token from Authorization header
     const authHeader = req.headers.authorization;
 
-    console.log("🔐 Auth check - Header present:", !!authHeader);
+    logger.info('Authentication check', {
+      path: req.path,
+      method: req.method,
+      hasAuthHeader: !!authHeader,
+      userAgent: req.headers['user-agent'],
+      timestamp: new Date().toISOString()
+    });
 
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      console.log("❌ Auth failed: No authorization token");
+      logger.warn('Authentication failed: No valid authorization header', {
+        path: req.path,
+        method: req.method,
+        hasAuthHeader: !!authHeader,
+        headerStartsWith: authHeader?.substring(0, 20) || 'none'
+      });
       throw new AppError(401, "No authorization token provided");
     }
 
     const token = authHeader.substring(7); // Remove "Bearer " prefix
-    console.log("🔐 Auth check - Token received:", token.substring(0, 20) + "...");
+    
+    logger.info('JWT verification attempt', {
+      tokenLength: token.length,
+      tokenPrefix: token.substring(0, 20) + "...",
+      issuer: KINDE_DOMAIN
+    });
 
     // Verify JWT token with Kinde's public keys
     // Note: Kinde tokens for PKCE flow don't have an audience claim, so we only verify issuer
-    console.log("🔐 Verifying JWT with issuer:", KINDE_DOMAIN);
     const { payload } = await jwtVerify(token, JWKS, {
       issuer: KINDE_DOMAIN,
     });
-    console.log("✅ JWT verified successfully, user:", payload.sub);
 
     // Extract user information from token
     const userId = payload.sub;
-    console.log("🔐 Extracted userId:", userId);
 
     if (!userId) {
-      console.log("❌ No userId in token");
+      logger.error('JWT verification failed: Missing user ID', {
+        payloadKeys: Object.keys(payload),
+        hasSub: !!payload.sub,
+        hasEmail: !!payload.email
+      });
       throw new AppError(401, "Invalid token: missing user ID");
     }
+
+    logger.info('JWT verified successfully', {
+      userId,
+      hasEmail: !!payload.email,
+      hasName: !!(payload.given_name || payload.family_name)
+    });
 
     // Attach user information to request
     req.userId = userId;
@@ -79,25 +102,35 @@ export const isAuthenticated = async (
       family_name: payload.family_name as string | undefined,
       picture: payload.picture as string | undefined,
     };
-    console.log("🔐 Kinde user data:", req.kindeUser);
 
     // Ensure user exists in database
-    console.log("🔐 Checking if user exists in database...");
     let user = await storage.getUser(userId);
-    console.log("🔐 User from database:", user ? "found" : "not found");
-
     const isFirstLogin = !user;
 
     if (!user) {
-      // Create user in database if they don't exist
-      console.log("🔐 Syncing user to database...");
-      await syncUserToDatabase(userId, {
+      logger.info('First-time user login, syncing to database', {
+        userId,
         email: req.kindeUser.email,
         firstName: req.kindeUser.given_name,
-        lastName: req.kindeUser.family_name,
-        profileImageUrl: req.kindeUser.picture,
+        lastName: req.kindeUser.family_name
       });
-      console.log("🔐 User synced successfully");
+
+      try {
+        await syncUserToDatabase(userId, {
+          email: req.kindeUser.email,
+          firstName: req.kindeUser.given_name,
+          lastName: req.kindeUser.family_name,
+          profileImageUrl: req.kindeUser.picture,
+        });
+        logger.info('User synced to database successfully', { userId });
+      } catch (syncError) {
+        logger.error('Failed to sync user to database', {
+          userId,
+          error: syncError instanceof Error ? syncError.message : 'Unknown error',
+          stack: syncError instanceof Error ? syncError.stack : undefined
+        });
+        throw new AppError(500, "Failed to create user account. Please try again.");
+      }
     }
 
     // Check if user has ConvertKit settings to determine if they need auto-subscription
@@ -106,7 +139,7 @@ export const isAuthenticated = async (
     // Auto-subscribe on first login if user has email and no ConvertKit settings
     if (isFirstLogin && req.kindeUser.email && !convertKitSettings && process.env.CONVERTKIT_AUTO_SUBSCRIBE === 'true') {
       try {
-        logger.info('🚀 Auto-subscribing new user to ConvertKit', { 
+        logger.info('Auto-subscribing new user to ConvertKit', { 
           userId, 
           email: req.kindeUser.email 
         });
@@ -122,7 +155,7 @@ export const isAuthenticated = async (
         });
 
         if (response.success && response.data) {
-          logger.info('✅ Successfully auto-subscribed user to ConvertKit', { 
+          logger.info('Successfully auto-subscribed user to ConvertKit', { 
             userId, 
             subscriberId: response.data.id,
             email: req.kindeUser.email 
@@ -142,7 +175,7 @@ export const isAuthenticated = async (
           });
         }
       } catch (error) {
-        logger.error('❌ Failed to auto-subscribe user to ConvertKit', { 
+        logger.error('Failed to auto-subscribe user to ConvertKit', { 
           userId, 
           email: req.kindeUser.email,
           error: error instanceof Error ? error.message : 'Unknown error'
@@ -151,15 +184,31 @@ export const isAuthenticated = async (
       }
     }
 
-    console.log("✅ Authentication successful, calling next()");
+    logger.info('Authentication successful', {
+      userId,
+      path: req.path,
+      method: req.method
+    });
+
     next();
   } catch (error) {
     if (error instanceof AppError) {
-      console.log("❌ AppError caught:", error.message);
+      logger.warn('AppError in authentication', {
+        statusCode: error.statusCode,
+        message: error.message,
+        path: req.path,
+        method: req.method
+      });
       return res.status(error.statusCode).json({ message: error.message });
     }
 
-    console.error("❌ Authentication error:", error);
+    logger.error('Unexpected authentication error', {
+      error: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined,
+      path: req.path,
+      method: req.method
+    });
+    
     return res.status(401).json({ message: "Invalid or expired token" });
   }
 };

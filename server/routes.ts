@@ -49,30 +49,83 @@ export async function registerRoutes(app: Express): Promise<Server> {
       },
     };
 
-    // Check database connectivity
+    // Check database connectivity with detailed error info
     try {
-      await db.execute(sql`SELECT 1`);
+      const result = await db.execute(sql`SELECT 1`);
       checks.database = "ok";
+      checks.databaseDetails = {
+        connected: true,
+        queryTime: Date.now()
+      };
     } catch (error) {
       checks.database = "error";
       checks.databaseError = error instanceof Error ? error.message : "Unknown error";
+      checks.databaseDetails = {
+        connected: false,
+        url: process.env.DATABASE_URL ? "configured" : "missing",
+        errorType: error instanceof Error ? error.constructor.name : 'Unknown'
+      };
+      
+      logger.error('Database health check failed', {
+        error: checks.databaseError,
+        hasDatabaseUrl: !!process.env.DATABASE_URL
+      });
+    }
+
+    // Check authentication configuration
+    try {
+      if (process.env.KINDE_DOMAIN) {
+        checks.auth = "ok";
+        checks.authDetails = {
+          kindeDomain: process.env.KINDE_DOMAIN,
+          configured: true
+        };
+      } else {
+        checks.auth = "error";
+        checks.authError = "KINDE_DOMAIN not configured";
+        checks.authDetails = {
+          configured: false
+        };
+      }
+    } catch (error) {
+      checks.auth = "error";
+      checks.authError = error instanceof Error ? error.message : "Unknown error";
     }
 
     // Check R2 storage connectivity (just verify config exists)
     try {
       if (process.env.R2_ENDPOINT && process.env.R2_ACCESS_KEY_ID && process.env.R2_BUCKET_NAME) {
         checks.storage = "ok";
+        checks.storageDetails = {
+          endpoint: process.env.R2_ENDPOINT,
+          bucket: process.env.R2_BUCKET_NAME,
+          configured: true
+        };
       } else {
-        checks.storage = "error";
+        checks.storage = "warning";
         checks.storageError = "R2 configuration missing";
+        checks.storageDetails = {
+          configured: false,
+          missingVars: [
+            !process.env.R2_ENDPOINT ? "R2_ENDPOINT" : null,
+            !process.env.R2_ACCESS_KEY_ID ? "R2_ACCESS_KEY_ID" : null,
+            !process.env.R2_BUCKET_NAME ? "R2_BUCKET_NAME" : null
+          ].filter(Boolean)
+        };
       }
     } catch (error) {
       checks.storage = "error";
       checks.storageError = error instanceof Error ? error.message : "Unknown error";
     }
 
-    const healthy = checks.database === "ok" && checks.storage === "ok";
-    res.status(healthy ? 200 : 503).json(checks);
+    // Overall health status
+    const criticalServices = [checks.database, checks.auth];
+    const healthy = criticalServices.every(check => check === "ok");
+    
+    const statusCode = healthy ? 200 : 503;
+    checks.overall = healthy ? "healthy" : "unhealthy";
+
+    res.status(statusCode).json(checks);
   }));
 
   // Auth routes
@@ -441,13 +494,63 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/sessions", apiLimiter, isAuthenticated, asyncHandler(async (req: any, res) => {
     const userId = req.userId;
-    const validatedData = insertPhotoSessionSchema.parse({
-      ...req.body,
-      userId,
-    });
     
-    const session = await storage.createSession(validatedData);
-    res.json(session);
+    // Enhanced logging for debugging session creation
+    logger.info('Session creation attempt', {
+      userId,
+      requestBody: req.body,
+      userAgent: req.headers['user-agent'],
+      timestamp: new Date().toISOString()
+    });
+
+    try {
+      // Validate session data
+      const validatedData = insertPhotoSessionSchema.parse({
+        ...req.body,
+        userId,
+      });
+      
+      logger.info('Session data validated successfully', {
+        sessionId: validatedData.id || 'pending',
+        userId: validatedData.userId,
+        name: validatedData.name
+      });
+      
+      // Create session with detailed error handling
+      const session = await storage.createSession(validatedData);
+      
+      logger.info('Session created successfully', {
+        sessionId: session.id,
+        userId: session.userId,
+        name: session.name,
+        status: session.status,
+        createdAt: session.createdAt
+      });
+      
+      res.json(session);
+    } catch (error) {
+      logger.error('Session creation failed', {
+        userId,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined,
+        requestBody: req.body,
+        timestamp: new Date().toISOString()
+      });
+      
+      // Re-throw with enhanced error context
+      if (error instanceof Error) {
+        if (error.message.includes('database') || error.message.includes('connection')) {
+          throw new AppError(500, 'Database connection failed. Please try again later.');
+        } else if (error.message.includes('validation') || error.message.includes('schema')) {
+          throw new AppError(400, 'Invalid session data provided. Please check your input.');
+        } else if (error.message.includes('duplicate') || error.message.includes('unique')) {
+          throw new AppError(409, 'Session with this name already exists. Please use a different name.');
+        } else {
+          throw new AppError(500, `Failed to create session: ${error.message}`);
+        }
+      }
+      throw new AppError(500, 'An unexpected error occurred while creating the session');
+    }
   }));
 
   app.get("/api/sessions/:sessionId", apiLimiter, isAuthenticated, validateUUID("sessionId"), asyncHandler(async (req: any, res) => {
