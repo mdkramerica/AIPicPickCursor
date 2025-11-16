@@ -554,6 +554,30 @@ export class PhotoAnalysisService {
   }> {
     const totalPhotos = photos.length;
 
+    // Helper to identify primary (foreground) faces for scoring and selection.
+    // Uses normalized bounding boxes only, so it's independent of original image size.
+    const getPrimaryFacesForSelection = (analysis: PhotoAnalysisResult): FaceAnalysis[] => {
+      const faces = analysis.faces || [];
+      if (faces.length === 0) return [];
+
+      const areas = faces.map(f => f.boundingBox.width * f.boundingBox.height);
+      const maxArea = Math.max(...areas, 0);
+      if (maxArea <= 0) return faces;
+
+      const PRIMARY_AREA_THRESHOLD = 0.4;   // at least 40% of largest face
+      const PRIMARY_CENTER_THRESHOLD = 0.45; // reasonably near image center
+
+      return faces.filter((face, idx) => {
+        const normArea = areas[idx] / maxArea;
+        const cx = face.boundingBox.x + face.boundingBox.width / 2;
+        const cy = face.boundingBox.y + face.boundingBox.height / 2;
+        const dx = cx - 0.5;
+        const dy = cy - 0.5;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        return normArea >= PRIMARY_AREA_THRESHOLD && dist <= PRIMARY_CENTER_THRESHOLD;
+      });
+    };
+
     try {
       // Emit initial progress - loading models
       this.emitProgress({
@@ -729,16 +753,20 @@ export class PhotoAnalysisService {
       // Priority 1: Maximum eyes open count
       // Priority 2: Quality score tiebreaker (smiles + face quality)
 
-      // First, find the maximum number of faces detected across all photos
-      const maxFaceCount = Math.max(...analyses.map(a => a.faces.length), 0);
+      // First, find the maximum number of primary faces detected across all photos
+      const primaryCounts = analyses.map(a => {
+        const primary = getPrimaryFacesForSelection(a);
+        return primary.length || a.faces.length;
+      }); const maxPrimaryFaceCount = Math.max(...primaryCounts, 0);
       
-      // Filter to only photos within 1 face of the maximum (consensus group)
+      // Filter to only photos within 1 primary face of the maximum (consensus group)
       // This ensures we're selecting from photos that captured most/all people
-      const consensusPhotos = analyses.filter(a => a.faces.length >= maxFaceCount - 1);
+      const consensusPhotos = analyses.filter((a, idx) => primaryCounts[idx] >= maxPrimaryFaceCount - 1);
       
-      console.log(`📊 Face count consensus: max=${maxFaceCount}, considering ${consensusPhotos.length}/${analyses.length} photos`);
+      console.log(`📊 Face count consensus: max=${maxPrimaryFaceCount}, considering ${consensusPhotos.length}/${analyses.length} photos`);
       consensusPhotos.forEach(p => {
-        console.log(`  - Photo ${p.photoId}: ${p.faces.length} faces detected`);
+        const primary = getPrimaryFacesForSelection(p);
+        console.log(`  - Photo ${p.photoId}: total=${p.faces.length}, primary=${primary.length}`);
       });
       
       let bestPhotoId: string | null = null;
@@ -747,16 +775,20 @@ export class PhotoAnalysisService {
 
       // Now apply eyes open and quality score priorities within consensus group
       for (const analysis of consensusPhotos) {
-        const eyesOpenCount = analysis.faces.filter(f => f.attributes.eyesOpen.detected).length;
+        let primaryFaces = getPrimaryFacesForSelection(analysis);
+        if (primaryFaces.length === 0) {
+          primaryFaces = analysis.faces;
+        }
+        const eyesOpenCount = primaryFaces.filter(f => f.attributes.eyesOpen.detected).length;
         
         // Calculate tiebreaker score (smiles + face quality only, excludes eyes open)
-        const smilingCount = analysis.faces.filter(f => f.attributes.smile.detected).length;
-        const avgFaceQuality = analysis.faces.length > 0
-          ? analysis.faces.reduce((sum, f) => sum + f.qualityScore, 0) / analysis.faces.length
+        const smilingCount = primaryFaces.filter(f => f.attributes.smile.detected).length;
+        const avgFaceQuality = primaryFaces.length > 0
+          ? primaryFaces.reduce((sum, f) => sum + f.qualityScore, 0) / primaryFaces.length
           : 0;
         
-        const smilingScore = analysis.faces.length > 0 
-          ? (smilingCount / analysis.faces.length) * 40 
+        const smilingScore = primaryFaces.length > 0 
+          ? (smilingCount / primaryFaces.length) * 40 
           : 0;
         const faceQualityScore = (avgFaceQuality / 100) * 20;
         const tiebreakerScore = smilingScore + faceQualityScore;
