@@ -311,6 +311,16 @@ export class PhotoAnalysisService {
       }
 
       // Process each detected face
+      // First compute relative size/position statistics so we can emphasize primary (foreground) faces
+      const imgWidth = canvas.width;
+      const imgHeight = canvas.height;
+      const faceAreas = detections.map(d => {
+        const b = d.detection.box;
+        return (b.width * b.height) / (imgWidth * imgHeight); // normalized area (0–1)
+      });
+      const maxArea = Math.max(...faceAreas, 0.0001);
+      const maxCenterDistance = Math.sqrt(0.5 * 0.5 + 0.5 * 0.5) || 1; // distance from center to corner in normalized coords
+
       const faces: FaceAnalysis[] = detections.map((detection, index) => {
         const landmarks = detection.landmarks;
         const expressions = detection.expressions;
@@ -345,6 +355,18 @@ export class PhotoAnalysisService {
           ? expressionEntries.reduce((a, b) => a[1] > b[1] ? a : b)[0]
           : 'neutral';
         
+        // Calculate spatial weighting so "primary" faces (large & central) matter more
+        const normArea = faceAreas[index] / maxArea; // 1.0 for largest face
+        const centerX = (box.x + box.width / 2) / imgWidth;
+        const centerY = (box.y + box.height / 2) / imgHeight;
+        const dx = centerX - 0.5;
+        const dy = centerY - 0.5;
+        const distanceFromCenter = Math.sqrt(dx * dx + dy * dy);
+        const centerWeight = Math.max(0, 1 - (distanceFromCenter / maxCenterDistance)); // 1 at center, 0 at far corners
+
+        // Primary face weight: emphasize large faces near the center
+        const spatialWeight = (normArea * 0.7) + (centerWeight * 0.3);
+
         // Calculate face quality score
         const eyeScore = eyesOpen ? 40 : 0;
         const smileScore = smileDetected ? 30 : 0;
@@ -358,12 +380,11 @@ export class PhotoAnalysisService {
           expressionScore,
           detectionScore,
           finalScore: qualityScore,
+          spatialWeight: spatialWeight.toFixed(3),
+          normArea: normArea.toFixed(3),
+          centerWeight: centerWeight.toFixed(3),
           hasExpressions: !!expressions,
         });
-        
-        // Normalize bounding box to 0-1 range
-        const imgWidth = canvas.width;
-        const imgHeight = canvas.height;
         
         return {
           faceId: `face-${photoId}-${index}`,
@@ -402,18 +423,41 @@ export class PhotoAnalysisService {
         };
       });
 
-      // Calculate overall photo quality
-      const eyesOpenCount = faces.filter(f => f.attributes.eyesOpen.detected).length;
-      const smilingCount = faces.filter(f => f.attributes.smile.detected).length;
-      const avgFaceQuality = faces.reduce((sum, f) => sum + f.qualityScore, 0) / faces.length;
+      // Calculate overall photo quality – weight by spatial importance so background faces matter less
+      const weights = faces.map((face) => {
+        const area = face.boundingBox.width * face.boundingBox.height;
+        // Recompute center distance using normalized coordinates
+        const cx = face.boundingBox.x + face.boundingBox.width / 2;
+        const cy = face.boundingBox.y + face.boundingBox.height / 2;
+        const ddx = cx - 0.5;
+        const ddy = cy - 0.5;
+        const dist = Math.sqrt(ddx * ddx + ddy * ddy);
+        const centerW = Math.max(0, 1 - (dist / maxCenterDistance));
+        const areaW = maxArea > 0 ? area / maxArea : 1;
+        return (areaW * 0.7) + (centerW * 0.3);
+      });
+      const totalWeight = weights.reduce((sum, w) => sum + w, 0) || 1;
+
+      const weightedEyesOpenCount = faces.reduce(
+        (sum, f, idx) => sum + (f.attributes.eyesOpen.detected ? weights[idx] : 0),
+        0
+      );
+      const weightedSmilingCount = faces.reduce(
+        (sum, f, idx) => sum + (f.attributes.smile.detected ? weights[idx] : 0),
+        0
+      );
+      const avgFaceQuality = faces.reduce(
+        (sum, f, idx) => sum + f.qualityScore * weights[idx],
+        0
+      ) / totalWeight;
       
-      const eyesOpenScore = (eyesOpenCount / faces.length) * 40;
-      const smilingScore = (smilingCount / faces.length) * 40;
+      const eyesOpenScore = (weightedEyesOpenCount / totalWeight) * 40;
+      const smilingScore = (weightedSmilingCount / totalWeight) * 40;
       const faceQualityScore = (avgFaceQuality / 100) * 20;
       
       const overallQualityScore = eyesOpenScore + smilingScore + faceQualityScore;
 
-      const closedEyes = faces.length - eyesOpenCount;
+      const closedEyes = faces.length - faces.filter(f => f.attributes.eyesOpen.detected).length;
       const poorExpressions = faces.filter(f => 
         f.attributes.expression === 'sad' || f.attributes.expression === 'angry'
       ).length;
