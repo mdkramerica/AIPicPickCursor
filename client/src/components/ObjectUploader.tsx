@@ -7,9 +7,6 @@ import XHRUpload from "@uppy/xhr-upload";
 import type { UploadResult } from "@uppy/core";
 import { Button } from "@/components/ui/button";
 import { useKindeAuth } from "@kinde-oss/kinde-auth-react";
-// Uppy styles for clean, consistent upload UI
-import "@uppy/core/dist/style.css";
-import "@uppy/dashboard/dist/style.css";
 
 interface ObjectUploaderProps {
   maxNumberOfFiles?: number;
