@@ -411,14 +411,17 @@ export default function BulkUploadComponent({
     return `${(bytes / 1024 / 1024).toFixed(1)}MB`;
   };
 
+  const completedCount = files.filter(f => f.status === 'success' || f.status === 'error').length;
+  const inProgress = isUploading && files.length > 0;
+
   return (
     <div className="space-y-6">
       {/* Upload Area */}
       <Card 
         className={cn(
-          "border-2 border-dashed transition-colors",
+          "border-2 border-dashed transition-colors bg-muted/30",
           isDragging ? "border-primary bg-primary/5" : "border-muted-foreground/25",
-          isUploading && "opacity-50 pointer-events-none"
+          isUploading && "pointer-events-none"
         )}
         onDragEnter={handleDragEnter}
         onDragOver={handleDragOver}
@@ -463,6 +466,20 @@ export default function BulkUploadComponent({
                 <p className="text-sm text-muted-foreground">
                   {files.length} files • {formatFileSize(totalFileSize)}
                 </p>
+                {inProgress && (
+                  <div className="mt-2 space-y-1">
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                      <span>
+                        Uploading {completedCount} of {files.length} photos
+                      </span>
+                    </div>
+                    <Progress 
+                      value={(completedCount / files.length) * 100} 
+                      className="h-1"
+                    />
+                  </div>
+                )}
               </div>
               <div className="flex gap-2">
                 {uploadCompleted && showAnalyzeButton ? (
@@ -551,7 +568,14 @@ export default function BulkUploadComponent({
                       />
                       
                       {/* Status Overlay */}
-                      <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                      <div
+                        className={cn(
+                          "absolute inset-0 bg-black/50 flex items-center justify-center transition-opacity",
+                          file.status === 'uploading'
+                            ? "opacity-100"
+                            : "opacity-0 group-hover:opacity-100"
+                        )}
+                      >
                         {file.status === 'pending' && (
                           <Badge variant="secondary">Pending</Badge>
                         )}
