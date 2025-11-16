@@ -171,7 +171,8 @@ export class PhotoAnalysisService {
         if (withLandmarksAndExpressions) {
           detections = await faceapi
             .detectAllFaces(tensor as any, new faceapi.SsdMobilenetv1Options({
-              minConfidence: 0.5
+              // Slightly lower confidence to better catch partially occluded main faces
+              minConfidence: 0.4
             }))
             .withFaceLandmarks()
             .withFaceExpressions();
@@ -179,7 +180,8 @@ export class PhotoAnalysisService {
           detections = await faceapi.detectAllFaces(
             tensor as any,
             new faceapi.SsdMobilenetv1Options({
-              minConfidence: 0.5
+              // Match the lenient threshold for detection-only paths as well
+              minConfidence: 0.4
             })
           );
         }
