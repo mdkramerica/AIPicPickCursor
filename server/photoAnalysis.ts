@@ -770,38 +770,31 @@ export class PhotoAnalysisService {
       });
       
       let bestPhotoId: string | null = null;
-      let bestEyesOpenCount = -1;
-      let bestTiebreakerScore = 0;
-
-      // Now apply eyes open and quality score priorities within consensus group
+      let bestSelectionScore = -Infinity;
+      
+      // Compute a single selection score per photo, focusing on primary faces
       for (const analysis of consensusPhotos) {
         let primaryFaces = getPrimaryFacesForSelection(analysis);
         if (primaryFaces.length === 0) {
           primaryFaces = analysis.faces;
         }
+
+        const primaryCount = primaryFaces.length || 1;
         const eyesOpenCount = primaryFaces.filter(f => f.attributes.eyesOpen.detected).length;
-        
-        // Calculate tiebreaker score (smiles + face quality only, excludes eyes open)
         const smilingCount = primaryFaces.filter(f => f.attributes.smile.detected).length;
-        const avgFaceQuality = primaryFaces.length > 0
-          ? primaryFaces.reduce((sum, f) => sum + f.qualityScore, 0) / primaryFaces.length
-          : 0;
-        
-        const smilingScore = primaryFaces.length > 0 
-          ? (smilingCount / primaryFaces.length) * 40 
-          : 0;
-        const faceQualityScore = (avgFaceQuality / 100) * 20;
-        const tiebreakerScore = smilingScore + faceQualityScore;
-        
-        // Priority 1: Maximum eyes open count (within consensus group)
-        if (eyesOpenCount > bestEyesOpenCount) {
-          bestEyesOpenCount = eyesOpenCount;
-          bestTiebreakerScore = tiebreakerScore;
-          bestPhotoId = analysis.photoId;
-        } 
-        // Priority 2: If same eyes open count, use smiles + face quality as tiebreaker
-        else if (eyesOpenCount === bestEyesOpenCount && tiebreakerScore > bestTiebreakerScore) {
-          bestTiebreakerScore = tiebreakerScore;
+        const avgFaceQuality = primaryFaces.reduce((sum, f) => sum + f.qualityScore, 0) / primaryCount;
+
+        const eyesOpenRatio = eyesOpenCount / primaryCount;
+        const smilingRatio = smilingCount / primaryCount;
+
+        const selectionScore =
+          (analysis.overallQualityScore || 0) +
+          eyesOpenRatio * 10 +
+          smilingRatio * 5 +
+          avgFaceQuality * 0.2;
+
+        if (selectionScore > bestSelectionScore) {
+          bestSelectionScore = selectionScore;
           bestPhotoId = analysis.photoId;
         }
       }
