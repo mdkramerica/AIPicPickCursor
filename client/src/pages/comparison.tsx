@@ -265,7 +265,7 @@ export default function Comparison() {
     });
 
   // If no photos have analysis data or faces, show helpful message
-  if (sortedPhotos.length === 0 && photosArray && photosArray.length > 0) {
+  if (sortedPhotos.length === 0 && photos && photos.length > 0) {
     return (
       <div className="min-h-screen bg-background">
         <div className="container mx-auto p-4 pb-20 max-w-7xl">

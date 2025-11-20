@@ -1,4 +1,4 @@
-import { ConvertKitWebhookEvent } from '../shared/convertKitTypes';
+import { ConvertKitWebhookEvent } from '@shared/convertKitTypes';
 import { db } from '../db';
 import { convertKitSettings, users } from '@shared/schema';
 import { eq } from 'drizzle-orm';

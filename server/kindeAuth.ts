@@ -1,7 +1,7 @@
 import type { Request, Response, NextFunction, Express } from "express";
 import { jwtVerify, createRemoteJWKSet } from "jose";
 import { storage } from "./storage";
-import { convertKitService } from "./convertKitService";
+import { convertKitService } from "./services/convertKitService";
 import { AppError } from "./middleware/errorHandler";
 import { logger } from "./middleware/logger";
 

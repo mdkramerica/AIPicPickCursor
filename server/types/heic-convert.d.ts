@@ -1,6 +1,7 @@
 declare module 'heic-convert' {
-  function convert(input: Buffer | Uint8Array, options?: {
-    format?: 'JPEG' | 'PNG';
+  function convert(options: {
+    buffer: Buffer | Uint8Array;
+    format: 'JPEG' | 'PNG';
     quality?: number;
   }): Promise<Buffer>;
   

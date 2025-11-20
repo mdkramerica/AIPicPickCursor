@@ -253,7 +253,7 @@ export class PhotoGroupingService {
   /**
    * Extract basic features when advanced dependencies are not available
    */
-  private extractBasicFeatures(photo: Photo, analysisData?: PhotoAnalysisResult): GroupingFeatures {
+  private extractBasicFeatures(photo: any, analysisData?: PhotoAnalysisResult): GroupingFeatures {
     logger.info(`Using basic feature extraction for photo ${photo.id}`);
     
     // Extract face positions from analysis data
@@ -850,7 +850,7 @@ export class PhotoGroupingService {
         });
         
         // Process batch
-        const batchPromises = batch.map(async (photo) => {
+        const batchPromises = batch.map(async (photo: Photo) => {
           let analysisData: PhotoAnalysisResult | undefined;
           
           try {

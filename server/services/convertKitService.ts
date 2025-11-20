@@ -1,4 +1,4 @@
-import { ConvertKitConfig, ConvertKitSubscriber, ConvertKitTag, ConvertKitBroadcast, ConvertKitSubscriptionRequest, ConvertKitBroadcastRequest, ConvertKitApiResponse, ConvertKitRateLimitError, ConvertKitError, EmailCampaignData, CampaignType } from '../shared/convertKitTypes';
+import { ConvertKitConfig, ConvertKitSubscriber, ConvertKitTag, ConvertKitBroadcast, ConvertKitSubscriptionRequest, ConvertKitBroadcastRequest, ConvertKitApiResponse, ConvertKitRateLimitError, ConvertKitError, EmailCampaignData, CampaignType } from '@shared/convertKitTypes';
 import { db } from '../db';
 import { convertKitSettings, emailCampaigns } from '@shared/schema';
 import { eq } from 'drizzle-orm';

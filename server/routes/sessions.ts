@@ -57,7 +57,7 @@ router.post("/", apiLimiter, isAuthenticated, asyncHandler(async (req: any, res)
     });
     
     logger.info('Session data validated successfully', {
-      sessionId: validatedData.id || 'pending',
+      sessionId: 'pending',
       userId: validatedData.userId,
       name: validatedData.name
     });

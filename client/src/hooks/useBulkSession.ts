@@ -115,8 +115,14 @@ export function useBulkSession(sessionId?: string) {
   // Fetch session details
   const { data: session, isLoading: sessionLoading, error: sessionError } = useQuery<BulkSession>({
     queryKey: ['/api/bulk-sessions', sessionId],
+    queryFn: async () => {
+      if (!sessionId) throw new Error("No session ID");
+      const res = await apiRequest("GET", `/api/bulk-sessions/${sessionId}`);
+      return res.json();
+    },
     enabled: !!sessionId,
-    refetchInterval: (data: BulkSession | undefined) => {
+    refetchInterval: (query) => {
+      const data = query.state.data;
       // Refetch more frequently during active processing
       if (data && (data.status === 'uploading' || data.status === 'grouping' || data.status === 'analyzing')) {
         return 2000; // 2 seconds
