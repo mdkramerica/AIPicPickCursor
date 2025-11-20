@@ -1,8 +1,8 @@
 import { ConvertKitWebhookEvent } from '../shared/convertKitTypes';
-import { db } from './db';
-import { convertKitSettings, users } from '../shared/schema';
+import { db } from '../db';
+import { convertKitSettings, users } from '@shared/schema';
 import { eq } from 'drizzle-orm';
-import { logger } from './middleware/logger';
+import { logger } from '../middleware/logger';
 import * as crypto from 'node:crypto';
 
 export class ConvertKitWebhookHandler {

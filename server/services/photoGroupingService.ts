@@ -1,6 +1,6 @@
 // Photo Grouping Service - AI-powered photo grouping algorithm
 import type { Photo, PhotoAnalysisResult, FaceAnalysis } from "@shared/schema";
-import { logger } from './middleware/logger';
+import { logger } from '../middleware/logger';
 import { EventEmitter } from 'events';
 
 // Import dependencies using ES6 imports (matching photoAnalysis.ts pattern)
@@ -57,7 +57,7 @@ try {
 }
 
 try {
-  storage = require('./storage.js').storage;
+  storage = require('../storage.js').storage;
   logger.info('Storage loaded successfully');
 } catch (error) {
   logger.error('Failed to load storage', { 

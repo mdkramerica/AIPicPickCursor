@@ -6,7 +6,7 @@ import { loadImageFromUrl } from './imageLoader.js';
 import { createCanvas } from 'canvas';
 import path from 'path';
 import { EventEmitter } from 'events';
-import { storage } from './storage';
+import { storage } from '../storage';
 
 export interface AnalysisProgress {
   sessionId: string;

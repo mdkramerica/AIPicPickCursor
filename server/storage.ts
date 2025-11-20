@@ -1,13 +1,4 @@
-// Reference: blueprint:javascript_log_in_with_replit, blueprint:javascript_database
 import {
-  users,
-  photoSessions,
-  photos,
-  faces,
-  convertKitSettings,
-  emailCampaigns,
-  photoGroups,
-  photoGroupMemberships,
   type User,
   type UpsertUser,
   type PhotoSession,
@@ -26,11 +17,15 @@ import {
   type InsertPhotoGroupMembership,
   type BulkSessionOptions,
 } from "@shared/schema";
-import { db } from "./db";
-import { eq, desc, and, isNull, count } from "drizzle-orm";
+
+import { userRepository } from "./repositories/user.repository";
+import { sessionRepository } from "./repositories/session.repository";
+import { photoRepository } from "./repositories/photo.repository";
+import { groupRepository } from "./repositories/group.repository";
+import { integrationRepository } from "./repositories/integration.repository";
 
 export interface IStorage {
-  // User operations (Required for Replit Auth)
+  // User operations
   getUser(id: string): Promise<User | undefined>;
   upsertUser(user: UpsertUser): Promise<User>;
   
@@ -82,320 +77,148 @@ export interface IStorage {
 }
 
 export class DatabaseStorage implements IStorage {
-  // User operations (Required for Replit Auth)
+  // User operations
   async getUser(id: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.id, id));
-    return user;
+    return userRepository.getUser(id);
   }
 
   async upsertUser(userData: UpsertUser): Promise<User> {
-    const [user] = await db
-      .insert(users)
-      .values(userData)
-      .onConflictDoUpdate({
-        target: users.id,
-        set: {
-          ...userData,
-          updatedAt: new Date(),
-        },
-      })
-      .returning();
-    return user;
+    return userRepository.upsertUser(userData);
   }
 
   // Photo Session operations
   async getSessionsByUser(userId: string): Promise<PhotoSession[]> {
-    return await db
-      .select()
-      .from(photoSessions)
-      .where(eq(photoSessions.userId, userId))
-      .orderBy(desc(photoSessions.createdAt));
+    return sessionRepository.getSessionsByUser(userId);
   }
 
   async getSessionsByUserPaginated(userId: string, options?: { limit?: number; offset?: number }): Promise<PhotoSession[]> {
-    const limit = options?.limit ?? 20;
-    const offset = options?.offset ?? 0;
-    
-    return await db
-      .select()
-      .from(photoSessions)
-      .where(eq(photoSessions.userId, userId))
-      .orderBy(desc(photoSessions.createdAt))
-      .limit(limit)
-      .offset(offset);
+    return sessionRepository.getSessionsByUserPaginated(userId, options);
   }
 
   async countSessionsByUser(userId: string): Promise<number> {
-    const [result] = await db
-      .select({ count: count() })
-      .from(photoSessions)
-      .where(eq(photoSessions.userId, userId));
-    
-    return result?.count ?? 0;
+    return sessionRepository.countSessionsByUser(userId);
   }
 
   async getSession(id: string): Promise<PhotoSession | undefined> {
-    const [session] = await db
-      .select()
-      .from(photoSessions)
-      .where(eq(photoSessions.id, id));
-    return session;
+    return sessionRepository.getSession(id);
   }
 
   async createSession(sessionData: InsertPhotoSession): Promise<PhotoSession> {
-    const [session] = await db
-      .insert(photoSessions)
-      .values(sessionData)
-      .returning();
-    return session;
+    return sessionRepository.createSession(sessionData);
   }
 
   async updateSession(id: string, data: Partial<PhotoSession>): Promise<PhotoSession | undefined> {
-    const [session] = await db
-      .update(photoSessions)
-      .set({ ...data, updatedAt: new Date() })
-      .where(eq(photoSessions.id, id))
-      .returning();
-    return session;
+    return sessionRepository.updateSession(id, data);
+  }
+
+  async updateSessionBulkMode(sessionId: string, bulkMode: boolean, options?: BulkSessionOptions): Promise<PhotoSession | undefined> {
+    return sessionRepository.updateSessionBulkMode(sessionId, bulkMode, options);
   }
 
   // Photo operations
   async getPhotosBySession(sessionId: string): Promise<Photo[]> {
-    return await db
-      .select()
-      .from(photos)
-      .where(eq(photos.sessionId, sessionId))
-      .orderBy(photos.uploadOrder);
+    return photoRepository.getPhotosBySession(sessionId);
   }
 
   async getPhotosBySessionPaginated(sessionId: string, options?: { limit?: number; offset?: number }): Promise<Photo[]> {
-    const limit = options?.limit ?? 20;
-    const offset = options?.offset ?? 0;
-    
-    return await db
-      .select()
-      .from(photos)
-      .where(eq(photos.sessionId, sessionId))
-      .orderBy(photos.uploadOrder)
-      .limit(limit)
-      .offset(offset);
+    return photoRepository.getPhotosBySessionPaginated(sessionId, options);
   }
 
   async countPhotosBySession(sessionId: string): Promise<number> {
-    const [result] = await db
-      .select({ count: count() })
-      .from(photos)
-      .where(eq(photos.sessionId, sessionId));
-    
-    return result?.count ?? 0;
+    return photoRepository.countPhotosBySession(sessionId);
   }
 
   async getPhoto(id: string): Promise<Photo | undefined> {
-    const [photo] = await db
-      .select()
-      .from(photos)
-      .where(eq(photos.id, id));
-    return photo;
+    return photoRepository.getPhoto(id);
   }
 
   async createPhoto(photoData: InsertPhoto): Promise<Photo> {
-    const [photo] = await db
-      .insert(photos)
-      .values(photoData)
-      .returning();
-    return photo;
+    return photoRepository.createPhoto(photoData);
   }
 
   async updatePhoto(id: string, data: Partial<Photo>): Promise<Photo | undefined> {
-    const [photo] = await db
-      .update(photos)
-      .set(data)
-      .where(eq(photos.id, id))
-      .returning();
-    return photo;
+    return photoRepository.updatePhoto(id, data);
   }
 
   async deletePhoto(id: string): Promise<void> {
-    await db
-      .delete(photos)
-      .where(eq(photos.id, id));
+    return photoRepository.deletePhoto(id);
   }
 
   // Face operations
   async createFace(faceData: InsertFace): Promise<Face> {
-    const [face] = await db
-      .insert(faces)
-      .values(faceData)
-      .returning();
-    return face;
+    return photoRepository.createFace(faceData);
   }
 
   async getFacesByPhoto(photoId: string): Promise<Face[]> {
-    return await db
-      .select()
-      .from(faces)
-      .where(eq(faces.photoId, photoId));
-  }
-
-  // ConvertKit operations
-  async getConvertKitSettings(userId: string): Promise<ConvertKitSettings | undefined> {
-    const [settings] = await db
-      .select()
-      .from(convertKitSettings)
-      .where(eq(convertKitSettings.userId, userId));
-    return settings;
-  }
-
-  async createConvertKitSettings(settingsData: InsertConvertKitSettings): Promise<ConvertKitSettings> {
-    const [settings] = await db
-      .insert(convertKitSettings)
-      .values(settingsData)
-      .returning();
-    return settings;
-  }
-
-  async updateConvertKitSettings(userId: string, data: Partial<ConvertKitSettings>): Promise<ConvertKitSettings | undefined> {
-    const [settings] = await db
-      .update(convertKitSettings)
-      .set({ ...data, updatedAt: new Date() })
-      .where(eq(convertKitSettings.userId, userId))
-      .returning();
-    return settings;
-  }
-
-  // Email Campaign operations
-  async getEmailCampaignsBySession(sessionId: string): Promise<EmailCampaign[]> {
-    return await db
-      .select()
-      .from(emailCampaigns)
-      .where(eq(emailCampaigns.sessionId, sessionId))
-      .orderBy(desc(emailCampaigns.createdAt));
-  }
-
-  async createEmailCampaign(campaignData: InsertEmailCampaign): Promise<EmailCampaign> {
-    const [campaign] = await db
-      .insert(emailCampaigns)
-      .values(campaignData)
-      .returning();
-    return campaign;
-  }
-
-  async updateEmailCampaign(id: string, data: Partial<EmailCampaign>): Promise<EmailCampaign | undefined> {
-    const [campaign] = await db
-      .update(emailCampaigns)
-      .set(data)
-      .where(eq(emailCampaigns.id, id))
-      .returning();
-    return campaign;
+    return photoRepository.getFacesByPhoto(photoId);
   }
 
   // Photo Group operations
   async getGroupsBySession(sessionId: string): Promise<PhotoGroup[]> {
-    return await db
-      .select()
-      .from(photoGroups)
-      .where(eq(photoGroups.sessionId, sessionId))
-      .orderBy(desc(photoGroups.createdAt));
+    return groupRepository.getGroupsBySession(sessionId);
   }
 
   async getGroup(id: string): Promise<PhotoGroup | undefined> {
-    const [group] = await db
-      .select()
-      .from(photoGroups)
-      .where(eq(photoGroups.id, id));
-    return group;
+    return groupRepository.getGroup(id);
   }
 
   async createGroup(groupData: InsertPhotoGroup): Promise<PhotoGroup> {
-    const [group] = await db
-      .insert(photoGroups)
-      .values(groupData)
-      .returning();
-    return group;
+    return groupRepository.createGroup(groupData);
   }
 
   async updateGroup(id: string, data: Partial<PhotoGroup>): Promise<PhotoGroup | undefined> {
-    const [group] = await db
-      .update(photoGroups)
-      .set(data)
-      .where(eq(photoGroups.id, id))
-      .returning();
-    return group;
+    return groupRepository.updateGroup(id, data);
   }
 
   async deleteGroup(id: string): Promise<void> {
-    await db
-      .delete(photoGroups)
-      .where(eq(photoGroups.id, id));
+    return groupRepository.deleteGroup(id);
   }
 
   // Photo Group Membership operations
   async getMembershipsByGroup(groupId: string): Promise<PhotoGroupMembership[]> {
-    return await db
-      .select()
-      .from(photoGroupMemberships)
-      .where(eq(photoGroupMemberships.groupId, groupId));
+    return groupRepository.getMembershipsByGroup(groupId);
   }
 
   async getMembershipsByPhoto(photoId: string): Promise<PhotoGroupMembership[]> {
-    return await db
-      .select()
-      .from(photoGroupMemberships)
-      .where(eq(photoGroupMemberships.photoId, photoId));
+    return groupRepository.getMembershipsByPhoto(photoId);
   }
 
   async addPhotoToGroup(groupId: string, photoId: string, data?: Partial<InsertPhotoGroupMembership>): Promise<PhotoGroupMembership> {
-    const [membership] = await db
-      .insert(photoGroupMemberships)
-      .values({
-        groupId,
-        photoId,
-        ...data,
-      })
-      .returning();
-    return membership;
+    return groupRepository.addPhotoToGroup(groupId, photoId, data);
   }
 
   async removePhotoFromGroup(groupId: string, photoId: string): Promise<void> {
-    await db
-      .delete(photoGroupMemberships)
-      .where(and(
-        eq(photoGroupMemberships.groupId, groupId),
-        eq(photoGroupMemberships.photoId, photoId)
-      ));
+    return groupRepository.removePhotoFromGroup(groupId, photoId);
   }
 
   async updateMembership(membershipId: string, data: Partial<PhotoGroupMembership>): Promise<PhotoGroupMembership | undefined> {
-    const [membership] = await db
-      .update(photoGroupMemberships)
-      .set(data)
-      .where(eq(photoGroupMemberships.id, membershipId))
-      .returning();
-    return membership;
+    return groupRepository.updateMembership(membershipId, data);
   }
 
-  // Bulk Session Operations
-  async updateSessionBulkMode(sessionId: string, bulkMode: boolean, options?: BulkSessionOptions): Promise<PhotoSession | undefined> {
-    const updateData: Partial<PhotoSession> = {
-      bulkMode,
-      updatedAt: new Date(),
-    };
+  // ConvertKit operations
+  async getConvertKitSettings(userId: string): Promise<ConvertKitSettings | undefined> {
+    return integrationRepository.getConvertKitSettings(userId);
+  }
 
-    if (options) {
-      if (options.targetGroupSize !== undefined) {
-        updateData.targetGroupSize = options.targetGroupSize;
-      }
-      if (options.groupingAlgorithm !== undefined) {
-        updateData.groupingAlgorithm = options.groupingAlgorithm;
-      }
-    }
+  async createConvertKitSettings(settingsData: InsertConvertKitSettings): Promise<ConvertKitSettings> {
+    return integrationRepository.createConvertKitSettings(settingsData);
+  }
 
-    const [session] = await db
-      .update(photoSessions)
-      .set(updateData)
-      .where(eq(photoSessions.id, sessionId))
-      .returning();
-    return session;
+  async updateConvertKitSettings(userId: string, data: Partial<ConvertKitSettings>): Promise<ConvertKitSettings | undefined> {
+    return integrationRepository.updateConvertKitSettings(userId, data);
+  }
+
+  // Email Campaign operations
+  async getEmailCampaignsBySession(sessionId: string): Promise<EmailCampaign[]> {
+    return integrationRepository.getEmailCampaignsBySession(sessionId);
+  }
+
+  async createEmailCampaign(campaignData: InsertEmailCampaign): Promise<EmailCampaign> {
+    return integrationRepository.createEmailCampaign(campaignData);
+  }
+
+  async updateEmailCampaign(id: string, data: Partial<EmailCampaign>): Promise<EmailCampaign | undefined> {
+    return integrationRepository.updateEmailCampaign(id, data);
   }
 }
 
